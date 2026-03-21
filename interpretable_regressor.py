@@ -29,28 +29,28 @@ from performance import RESULTS_DIR, upsert_overall_results, evaluate_all_regres
 
 class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
-    CV-HSDT with Grouped Decision Rules, min_samples_leaf=3 (CV-HSDT-FDR-Grouped-msl3):
-    35-leaf tree + HSDT shrinkage, with decision rules split by the root condition
-    into two groups of ~17 rules each (instead of 35 flat sorted rules).
+    CV-HSDT with Grouped Decision Rules, 40 leaves (CV-HSDT-FDR-Grouped-40):
+    40-leaf tree + HSDT shrinkage, with decision rules split by the root condition
+    into two groups of ~20 rules each.
 
-    Uses min_samples_leaf=3 (vs default 5) to allow finer splits, potentially
-    improving RMSE while maintaining the same grouped __str__ format.
+    Tests if 40 leaves (20 per group) maintains interp=0.84 like 35-leaf (17/group),
+    while providing better RMSE than 35 leaves.
 
-    The two-step lookup makes the LLM's job tractable even with 35 leaves:
+    The two-step lookup makes the LLM's job tractable:
       1. Check root condition (primary split) → left or right group
-      2. Scan only ~17 rules in that group to find the matching prediction
+      2. Scan only ~20 rules in that group to find the matching prediction
 
     Shrinkage formula (top-down):
       shrunk[node] = orig[node] + lam * (shrunk[parent] - orig[node]) / (n_samples + lam)
 
-    Lambda grid: [1, 3, 7, 15, 30, 60]. 35 leaves, min_samples_leaf=3.
-    repr_v=18 to bust joblib cache.
+    Lambda grid: [1, 3, 7, 15, 30, 60]. 40 leaves for improved RMSE.
+    repr_v=19 to bust joblib cache.
     """
 
     LAMBDA_GRID = [1.0, 3.0, 7.0, 15.0, 30.0, 60.0]
 
-    def __init__(self, max_leaf_nodes=35, min_samples_leaf=3, shrinkage_lambda="cv", cv=5,
-                 repr_v=18):
+    def __init__(self, max_leaf_nodes=40, min_samples_leaf=5, shrinkage_lambda="cv", cv=5,
+                 repr_v=19):
         self.max_leaf_nodes = max_leaf_nodes
         self.min_samples_leaf = min_samples_leaf
         self.shrinkage_lambda = shrinkage_lambda
