@@ -14,6 +14,7 @@ Outputs (all under results/):
 import csv
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -227,10 +228,17 @@ if __name__ == "__main__":
     print(f"Per-dataset results saved → {tabarena_csv}")
 
     # --- Overall results CSV ---
+    try:
+        git_hash = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+    except Exception:
+        git_hash = ""
+
     overall_rows = [{
-        "model":                              mname,
+        "commit":                             'baseline',
         "mean_rmse":                          f"{avg_rmse[mname]:.6f}" if mname in avg_rmse else "",
         "frac_interpretability_tests_passed": f"{interp_scores[mname]:.4f}",
+        "status":                             "baseline",
+        "description":                        mname,
     } for mname in model_names]
     upsert_overall_results(overall_rows, RESULTS_DIR)
 

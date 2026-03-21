@@ -8,6 +8,7 @@ Usage: uv run model.py
 """
 
 import os
+import subprocess
 import sys
 import time
 
@@ -88,10 +89,17 @@ if __name__ == "__main__":
                  if not np.isnan(v.get("InterpretableRegressor", float("nan")))]
     mean_rmse = float(np.mean(rmse_vals)) if rmse_vals else float("nan")
 
+    try:
+        git_hash = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+    except Exception:
+        git_hash = ""
+
     upsert_overall_results([{
-        "model":                              "InterpretableRegressor",
+        "commit":                             git_hash,
         "mean_rmse":                          f"{mean_rmse:.6f}" if not np.isnan(mean_rmse) else "",
         "frac_interpretability_tests_passed": f"{n_passed / total:.4f}",
+        "status":                             "",
+        "description":                        "InterpretableRegressor",
     }], RESULTS_DIR)
 
     print()

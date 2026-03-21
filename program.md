@@ -43,9 +43,7 @@ Optimize both metrics in `results/overall_results.csv`:
 - **`mean_rmse`** — mean RMSE across TabArena regression datasets (lower is better)
 - **`frac_interpretability_tests_passed`** — fraction of LLM-graded interpretability tests passed (higher is better)
 
-Both metrics matter. A model that scores well on RMSE but poorly on interpretability tests, or vice versa, is not ideal. Look at the baseline scores in `overall_results.csv` to understand the trade-off space.
-
-**Simplicity criterion**: All else being equal, simpler is better. A tiny metric gain that doubles code complexity is not worth it.
+Both metrics matter. A model that scores well on RMSE but poorly on interpretability tests, or vice versa, is not ideal. Look at the baseline scores in `overall_results.csv` to understand the trade-off space. We want pareto improvements over the baselines.
 
 **The first run**: Your very first run should always be to establish the baseline — run the script as is, record the results.
 
@@ -75,7 +73,7 @@ commit	mean_rmse	frac_interpretability_tests_passed	status	description
 2. mean_rmse achieved — use empty for crashes (note: model.py does not compute mean_rmse; check overall_results.csv for the baseline value to compare against)
 3. frac_interpretability_tests_passed — from the script output
 4. status: `keep`, `discard`, or `crash`
-5. short text description of what this experiment tried
+5. short text description of what this experiment tried - make sure to update this clearly
 
 ## The experiment loop
 

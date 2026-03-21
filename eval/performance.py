@@ -187,11 +187,11 @@ def compute_rank_scores(dataset_rmses):
 # Overall results CSV
 # ---------------------------------------------------------------------------
 
-OVERALL_CSV_COLS = ["model", "mean_rmse", "frac_interpretability_tests_passed"]
+OVERALL_CSV_COLS = ["commit", "mean_rmse", "frac_interpretability_tests_passed", "status", "description"]
 
 
 def upsert_overall_results(rows, results_dir):
-    """Write or update overall_results.csv, replacing any existing rows by model name.
+    """Write or update overall_results.csv, replacing existing rows by description.
 
     Args:
         rows: list of dicts with keys matching OVERALL_CSV_COLS
@@ -200,18 +200,17 @@ def upsert_overall_results(rows, results_dir):
     import csv as _csv
     path = os.path.join(results_dir, "overall_results.csv")
 
-    # Load existing rows, drop any being replaced
+    # Load existing rows, drop any being replaced (keyed by description)
     existing = []
-    new_names = {r["model"] for r in rows}
+    new_descriptions = {r["description"] for r in rows}
     if os.path.exists(path):
         with open(path, newline="") as f:
             for row in _csv.DictReader(f):
-                if row["model"] not in new_names:
+                if row.get("description") not in new_descriptions:
                     existing.append(row)
 
-    # Sort: baselines first (alphabetical), then anything else
     all_rows = existing + [{k: r.get(k, "") for k in OVERALL_CSV_COLS} for r in rows]
-    all_rows.sort(key=lambda r: (r["model"] not in new_names, r["model"]))
+    all_rows.sort(key=lambda r: r.get("description", ""))
 
     with open(path, "w", newline="") as f:
         writer = _csv.DictWriter(f, fieldnames=OVERALL_CSV_COLS)
