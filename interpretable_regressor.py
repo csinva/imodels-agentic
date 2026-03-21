@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.linear_model import LassoCV
 from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.utils.validation import check_is_fitted
@@ -29,41 +30,35 @@ from performance import RESULTS_DIR, upsert_overall_results, evaluate_all_regres
 
 class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
-    Polynomial Feature CV-HSDT (PolyCV-HSDT):
-    Augments the feature set with squared terms before fitting a CV-tuned HSDT.
+    Sparse Linear + HSDT (SL-HSDT): two-component interpretable model.
 
-    Feature augmentation: for each feature xi, add xi^2 (squared).
-    This allows the DT to capture quadratic/nonlinear patterns in fewer splits,
-    improving RMSE on datasets with nonlinear relationships.
+    Component 1 (linear): LassoCV fits the global linear signal. Due to L1
+    regularization, typically only 2-5 features are active — making the formula
+    compact and easy to apply.
 
-    Example: for features [x0, x1], the augmented set is [x0, x1, x0^2, x1^2].
-    The DT can then split on x0^2 (e.g., x0^2 <= 4 means -2 <= x0 <= 2),
-    which an axis-aligned DT on original features would need many splits to capture.
+    Component 2 (nonlinear correction): CV-tuned HSDT fits the residuals
+    y - linear_pred. With the linear signal removed, the DT only needs to
+    capture the nonlinear remainder, which takes fewer splits.
 
-    Lambda is auto-selected via 5-fold CV from a wide grid.
-    max_leaf_nodes is fixed at 25 (known optimal for interpretability).
+    Prediction: y_hat = linear(X) + tree_correction(X)
 
     __str__ shows:
-      - Tree with augmented feature names (xi_sq for xi^2) — LLM can compute xi_sq = xi*xi
-      - Feature importances (for both original and augmented features)
-      - Net direction per feature
-      - Unused original features
+      1. Linear formula (LassoCV): y_linear = intercept + coef1*x1 + coef2*x2 + ...
+         (only active features shown; zero-coefficient features listed as unused)
+      2. Nonlinear correction tree (HSDT, shrunk leaf values)
+         — for datasets where the linear model captures most variance,
+           the correction tree is small/near-zero
+      3. Feature importances combining both components
     """
 
-    LAMBDA_GRID = [0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0]
+    LAMBDA_GRID = [0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0]
 
-    def __init__(self, max_leaf_nodes=25, min_samples_leaf=5, shrinkage_lambda="cv", cv=5):
+    def __init__(self, max_leaf_nodes=20, min_samples_leaf=5,
+                 tree_lambda="cv", cv=5):
         self.max_leaf_nodes = max_leaf_nodes
         self.min_samples_leaf = min_samples_leaf
-        self.shrinkage_lambda = shrinkage_lambda
+        self.tree_lambda = tree_lambda
         self.cv = cv
-
-    def _augment(self, X_arr, names):
-        """Add squared features. Returns (X_aug, augmented_names)."""
-        X_sq = X_arr ** 2
-        X_aug = np.hstack([X_arr, X_sq])
-        aug_names = list(names) + [f"{n}_sq" for n in names]
-        return X_aug, aug_names
 
     @staticmethod
     def _compute_shrinkage(tree, lam):
@@ -85,66 +80,74 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         shrink(0, orig[0])
         return shrunk
 
-    def _select_lambda(self, X_aug, y_arr):
+    def _select_tree_lambda(self, X_arr, residuals):
         kf = KFold(n_splits=self.cv, shuffle=True, random_state=42)
         best_lam, best_mse = 15.0, np.inf
         for lam in self.LAMBDA_GRID:
             fold_mses = []
-            for tr_idx, va_idx in kf.split(X_aug):
-                X_tr, X_va = X_aug[tr_idx], X_aug[va_idx]
-                y_tr, y_va = y_arr[tr_idx], y_arr[va_idx]
+            for tr_idx, va_idx in kf.split(X_arr):
+                X_tr, X_va = X_arr[tr_idx], X_arr[va_idx]
+                r_tr, r_va = residuals[tr_idx], residuals[va_idx]
                 tree = DecisionTreeRegressor(
                     max_leaf_nodes=self.max_leaf_nodes,
                     min_samples_leaf=self.min_samples_leaf,
                     random_state=42,
                 )
-                tree.fit(X_tr, y_tr)
+                tree.fit(X_tr, r_tr)
                 sv = self._compute_shrinkage(tree, lam)
-                fold_mses.append(np.mean((y_va - sv[tree.apply(X_va)]) ** 2))
+                fold_mses.append(np.mean((r_va - sv[tree.apply(X_va)]) ** 2))
             mse = np.mean(fold_mses)
             if mse < best_mse:
                 best_mse, best_lam = mse, lam
         return best_lam
 
     def fit(self, X, y):
-        orig_names = list(X.columns) if hasattr(X, "columns") else [f"x{i}" for i in range(X.shape[1])]
-        self.feature_names_in_ = orig_names
+        if hasattr(X, "columns"):
+            self.feature_names_in_ = list(X.columns)
+        else:
+            self.feature_names_in_ = [f"x{i}" for i in range(X.shape[1])]
 
         X_arr = np.asarray(X, dtype=float)
         y_arr = np.asarray(y, dtype=float)
 
-        X_aug, self.aug_names_ = self._augment(X_arr, orig_names)
+        # Component 1: sparse linear (LassoCV)
+        self.linear_ = LassoCV(cv=self.cv, random_state=42, max_iter=3000)
+        self.linear_.fit(X_arr, y_arr)
+        linear_pred = self.linear_.predict(X_arr)
+        residuals = y_arr - linear_pred
 
-        if self.shrinkage_lambda == "cv":
-            self.lambda_ = self._select_lambda(X_aug, y_arr)
+        # Component 2: HSDT on residuals
+        if self.tree_lambda == "cv":
+            self.tree_lambda_ = self._select_tree_lambda(X_arr, residuals)
         else:
-            self.lambda_ = float(self.shrinkage_lambda)
+            self.tree_lambda_ = float(self.tree_lambda)
 
         self.tree_ = DecisionTreeRegressor(
             max_leaf_nodes=self.max_leaf_nodes,
             min_samples_leaf=self.min_samples_leaf,
             random_state=42,
         )
-        self.tree_.fit(X_aug, y_arr)
-        self.shrunk_values_ = self._compute_shrinkage(self.tree_, self.lambda_)
+        self.tree_.fit(X_arr, residuals)
+        self.shrunk_values_ = self._compute_shrinkage(self.tree_, self.tree_lambda_)
 
         return self
 
     def predict(self, X):
         check_is_fitted(self, "tree_")
         X_arr = np.asarray(X, dtype=float)
-        X_aug, _ = self._augment(X_arr, self.feature_names_in_)
-        return self.shrunk_values_[self.tree_.apply(X_aug)]
+        linear_pred = self.linear_.predict(X_arr)
+        tree_corr = self.shrunk_values_[self.tree_.apply(X_arr)]
+        return linear_pred + tree_corr
 
     def _tree_lines(self, node=0, depth=0):
         t = self.tree_.tree_
-        names = self.aug_names_
+        names = self.feature_names_in_
         indent = "|   " * depth
 
         if t.children_left[node] == -1:
             val = self.shrunk_values_[node]
             n_s = t.n_node_samples[node]
-            return [f"{indent}|--- value: {val:.4f}  (n={n_s})"]
+            return [f"{indent}|--- correction: {val:.4f}  (n={n_s})"]
 
         fname = names[int(t.feature[node])]
         thresh = t.threshold[node]
@@ -154,54 +157,47 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         lines.extend(self._tree_lines(int(t.children_right[node]), depth + 1))
         return lines
 
-    def _infer_direction(self, feature_idx):
-        t = self.tree_.tree_
-        weighted_effect = 0.0
-        for node in range(t.node_count):
-            if t.children_left[node] == -1 or t.feature[node] != feature_idx:
-                continue
-            lc, rc = int(t.children_left[node]), int(t.children_right[node])
-            weighted_effect += (self.shrunk_values_[rc] - self.shrunk_values_[lc]) * (
-                t.n_node_samples[lc] + t.n_node_samples[rc]
-            )
-        if weighted_effect > 0:
-            return "positive"
-        elif weighted_effect < 0:
-            return "negative"
-        return "mixed"
-
     def __str__(self):
         check_is_fitted(self, "tree_")
-        n_orig = len(self.feature_names_in_)
+        names = self.feature_names_in_
+        coef = self.linear_.coef_
+        intercept = float(self.linear_.intercept_)
         importances = self.tree_.feature_importances_
 
         lines = [
-            f"PolyCV_HSDT(max_leaf_nodes={self.max_leaf_nodes}, lambda={self.lambda_:.1f})",
-            f"  nodes={self.tree_.tree_.node_count}, leaves={self.tree_.get_n_leaves()}",
-            f"  Note: features xi_sq = xi * xi (squared original features)",
+            f"SL_HSDT(max_leaf_nodes={self.max_leaf_nodes}, tree_lambda={self.tree_lambda_:.1f})",
+            f"  Prediction = linear_part + tree_correction",
             "",
-            "Tree structure (follow from root; leaf values are shrunk predictions):",
+            "Part 1 — Sparse linear model (LassoCV):",
+            f"  y_linear = {intercept:.4f}",
+        ]
+        active = [(names[i], coef[i]) for i in range(len(names)) if abs(coef[i]) > 1e-6]
+        active.sort(key=lambda x: abs(x[1]), reverse=True)
+        for name, c in active:
+            lines.append(f"    + ({c:+.4f}) * {name}")
+
+        zeroed = [names[i] for i in range(len(names)) if abs(coef[i]) <= 1e-6]
+        if zeroed:
+            lines.append(f"  Features with zero linear effect: {', '.join(zeroed)}")
+
+        lines += [
+            "",
+            f"Part 2 — Nonlinear correction tree (HSDT on residuals; add to y_linear above):",
+            f"  tree_lambda={self.tree_lambda_:.1f}, leaves={self.tree_.get_n_leaves()}",
         ]
         lines.extend(self._tree_lines())
 
-        order = np.argsort(importances)[::-1]
-        lines += ["", "Feature importances (Gini-based, including squared features):"]
-        for rank, fi in enumerate(order):
-            if importances[fi] > 1e-6:
-                fname = self.aug_names_[fi]
-                direction = self._infer_direction(fi)
-                lines.append(
-                    f"  {rank+1:2d}. {fname:<25s}  {importances[fi]:.4f}  (net: {direction})"
-                )
+        # Combined feature importances
+        linear_imp = np.abs(coef)
+        linear_imp = linear_imp / (linear_imp.sum() or 1.0)
+        tree_imp = importances / (importances.sum() or 1.0)
+        combined = 0.5 * linear_imp + 0.5 * tree_imp
 
-        # Report unused original features (zero importance for BOTH xi and xi_sq)
-        unused_orig = []
-        for i, name in enumerate(self.feature_names_in_):
-            sq_idx = n_orig + i
-            if importances[i] <= 1e-6 and (sq_idx >= len(importances) or importances[sq_idx] <= 1e-6):
-                unused_orig.append(name)
-        if unused_orig:
-            lines.append(f"\nOriginal features not used at all: {', '.join(unused_orig)}")
+        order = np.argsort(combined)[::-1]
+        lines += ["", "Combined feature importances (linear + tree, higher = more important):"]
+        for rank, fi in enumerate(order):
+            if combined[fi] > 0.01:
+                lines.append(f"  {rank+1:2d}. {names[fi]:<25s}  {combined[fi]:.4f}")
 
         return "\n".join(lines)
 
