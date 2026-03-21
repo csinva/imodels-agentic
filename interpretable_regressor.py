@@ -53,11 +53,13 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
 
     LAMBDA_GRID = [1.0, 3.0, 7.0, 15.0, 30.0, 60.0]
 
-    def __init__(self, max_leaf_nodes=25, min_samples_leaf=5, shrinkage_lambda="cv", cv=5):
+    def __init__(self, max_leaf_nodes=25, min_samples_leaf=5, shrinkage_lambda="cv", cv=5,
+                 repr_v=2):
         self.max_leaf_nodes = max_leaf_nodes
         self.min_samples_leaf = min_samples_leaf
         self.shrinkage_lambda = shrinkage_lambda
         self.cv = cv
+        self.repr_v = repr_v  # version tag — increment to bust joblib cache on __str__ changes
 
     @staticmethod
     def _compute_shrinkage(tree, lam):
