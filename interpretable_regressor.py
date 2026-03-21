@@ -14,7 +14,6 @@ import time
 
 import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
-from sklearn.linear_model import LassoCV
 from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.utils.validation import check_is_fitted
@@ -30,34 +29,29 @@ from performance import RESULTS_DIR, upsert_overall_results, evaluate_all_regres
 
 class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
-    Sparse Linear + HSDT (SL-HSDT): two-component interpretable model.
+    Shallow CV-HSDT: Hierarchical Shrinkage DT with small max_depth (3 levels)
+    and cross-validated lambda selection from a wide grid.
 
-    Component 1 (linear): LassoCV fits the global linear signal. Due to L1
-    regularization, typically only 2-5 features are active — making the formula
-    compact and easy to apply.
+    With max_depth=3 (at most 8 leaves), every path requires at most 3 binary
+    decisions — making point prediction trivially traceable by the LLM.
+    Strong CV-selected shrinkage compensates for the shallow tree by smoothing
+    leaf values toward ancestor nodes, recovering accuracy lost from depth limit.
 
-    Component 2 (nonlinear correction): CV-tuned HSDT fits the residuals
-    y - linear_pred. With the linear signal removed, the DT only needs to
-    capture the nonlinear remainder, which takes fewer splits.
+    Compared to CV-HSDT (max_leaf_nodes=25):
+    - Simpler tree structure → LLM can trace paths more accurately → higher interp
+    - Fewer parameters → potentially similar or better RMSE with strong shrinkage
+      (since highly regularized shallow tree ≈ strongly shrunk deeper tree)
 
-    Prediction: y_hat = linear(X) + tree_correction(X)
-
-    __str__ shows:
-      1. Linear formula (LassoCV): y_linear = intercept + coef1*x1 + coef2*x2 + ...
-         (only active features shown; zero-coefficient features listed as unused)
-      2. Nonlinear correction tree (HSDT, shrunk leaf values)
-         — for datasets where the linear model captures most variance,
-           the correction tree is small/near-zero
-      3. Feature importances combining both components
+    Lambda grid: [0.3, 1, 3, 8, 20, 50, 120, 300] — wide range to find optimal
+    smoothing for each dataset independently.
     """
 
-    LAMBDA_GRID = [0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0]
+    LAMBDA_GRID = [0.3, 1.0, 3.0, 8.0, 20.0, 50.0, 120.0, 300.0]
 
-    def __init__(self, max_leaf_nodes=20, min_samples_leaf=5,
-                 tree_lambda="cv", cv=5):
-        self.max_leaf_nodes = max_leaf_nodes
+    def __init__(self, max_depth=3, min_samples_leaf=5, shrinkage_lambda="cv", cv=5):
+        self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
-        self.tree_lambda = tree_lambda
+        self.shrinkage_lambda = shrinkage_lambda
         self.cv = cv
 
     @staticmethod
@@ -80,22 +74,22 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         shrink(0, orig[0])
         return shrunk
 
-    def _select_tree_lambda(self, X_arr, residuals):
+    def _select_lambda(self, X_arr, y_arr):
         kf = KFold(n_splits=self.cv, shuffle=True, random_state=42)
         best_lam, best_mse = 15.0, np.inf
         for lam in self.LAMBDA_GRID:
             fold_mses = []
             for tr_idx, va_idx in kf.split(X_arr):
                 X_tr, X_va = X_arr[tr_idx], X_arr[va_idx]
-                r_tr, r_va = residuals[tr_idx], residuals[va_idx]
+                y_tr, y_va = y_arr[tr_idx], y_arr[va_idx]
                 tree = DecisionTreeRegressor(
-                    max_leaf_nodes=self.max_leaf_nodes,
+                    max_depth=self.max_depth,
                     min_samples_leaf=self.min_samples_leaf,
                     random_state=42,
                 )
-                tree.fit(X_tr, r_tr)
+                tree.fit(X_tr, y_tr)
                 sv = self._compute_shrinkage(tree, lam)
-                fold_mses.append(np.mean((r_va - sv[tree.apply(X_va)]) ** 2))
+                fold_mses.append(np.mean((y_va - sv[tree.apply(X_va)]) ** 2))
             mse = np.mean(fold_mses)
             if mse < best_mse:
                 best_mse, best_lam = mse, lam
@@ -110,34 +104,25 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         X_arr = np.asarray(X, dtype=float)
         y_arr = np.asarray(y, dtype=float)
 
-        # Component 1: sparse linear (LassoCV)
-        self.linear_ = LassoCV(cv=self.cv, random_state=42, max_iter=3000)
-        self.linear_.fit(X_arr, y_arr)
-        linear_pred = self.linear_.predict(X_arr)
-        residuals = y_arr - linear_pred
-
-        # Component 2: HSDT on residuals
-        if self.tree_lambda == "cv":
-            self.tree_lambda_ = self._select_tree_lambda(X_arr, residuals)
+        if self.shrinkage_lambda == "cv":
+            self.lambda_ = self._select_lambda(X_arr, y_arr)
         else:
-            self.tree_lambda_ = float(self.tree_lambda)
+            self.lambda_ = float(self.shrinkage_lambda)
 
         self.tree_ = DecisionTreeRegressor(
-            max_leaf_nodes=self.max_leaf_nodes,
+            max_depth=self.max_depth,
             min_samples_leaf=self.min_samples_leaf,
             random_state=42,
         )
-        self.tree_.fit(X_arr, residuals)
-        self.shrunk_values_ = self._compute_shrinkage(self.tree_, self.tree_lambda_)
+        self.tree_.fit(X_arr, y_arr)
+        self.shrunk_values_ = self._compute_shrinkage(self.tree_, self.lambda_)
 
         return self
 
     def predict(self, X):
         check_is_fitted(self, "tree_")
         X_arr = np.asarray(X, dtype=float)
-        linear_pred = self.linear_.predict(X_arr)
-        tree_corr = self.shrunk_values_[self.tree_.apply(X_arr)]
-        return linear_pred + tree_corr
+        return self.shrunk_values_[self.tree_.apply(X_arr)]
 
     def _tree_lines(self, node=0, depth=0):
         t = self.tree_.tree_
@@ -147,7 +132,7 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         if t.children_left[node] == -1:
             val = self.shrunk_values_[node]
             n_s = t.n_node_samples[node]
-            return [f"{indent}|--- correction: {val:.4f}  (n={n_s})"]
+            return [f"{indent}|--- value: {val:.4f}  (n={n_s})"]
 
         fname = names[int(t.feature[node])]
         thresh = t.threshold[node]
@@ -157,47 +142,53 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         lines.extend(self._tree_lines(int(t.children_right[node]), depth + 1))
         return lines
 
+    def _infer_direction(self, feature_idx):
+        t = self.tree_.tree_
+        weighted_effect = 0.0
+        for node in range(t.node_count):
+            if t.children_left[node] == -1 or t.feature[node] != feature_idx:
+                continue
+            lc, rc = int(t.children_left[node]), int(t.children_right[node])
+            weighted_effect += (self.shrunk_values_[rc] - self.shrunk_values_[lc]) * (
+                t.n_node_samples[lc] + t.n_node_samples[rc]
+            )
+        if weighted_effect > 0:
+            return "positive (higher → higher prediction)"
+        elif weighted_effect < 0:
+            return "negative (higher → lower prediction)"
+        return "mixed"
+
     def __str__(self):
         check_is_fitted(self, "tree_")
         names = self.feature_names_in_
-        coef = self.linear_.coef_
-        intercept = float(self.linear_.intercept_)
+        t = self.tree_.tree_
         importances = self.tree_.feature_importances_
+        n_leaves = self.tree_.get_n_leaves()
 
         lines = [
-            f"SL_HSDT(max_leaf_nodes={self.max_leaf_nodes}, tree_lambda={self.tree_lambda_:.1f})",
-            f"  Prediction = linear_part + tree_correction",
+            f"ShallowCV_HSDT(max_depth={self.max_depth}, "
+            f"selected_lambda={self.lambda_:.1f})",
+            f"  nodes={t.node_count}, leaves={n_leaves} "
+            f"(max {2**self.max_depth} leaves, max {self.max_depth} decisions per path)",
             "",
-            "Part 1 — Sparse linear model (LassoCV):",
-            f"  y_linear = {intercept:.4f}",
-        ]
-        active = [(names[i], coef[i]) for i in range(len(names)) if abs(coef[i]) > 1e-6]
-        active.sort(key=lambda x: abs(x[1]), reverse=True)
-        for name, c in active:
-            lines.append(f"    + ({c:+.4f}) * {name}")
-
-        zeroed = [names[i] for i in range(len(names)) if abs(coef[i]) <= 1e-6]
-        if zeroed:
-            lines.append(f"  Features with zero linear effect: {', '.join(zeroed)}")
-
-        lines += [
-            "",
-            f"Part 2 — Nonlinear correction tree (HSDT on residuals; add to y_linear above):",
-            f"  tree_lambda={self.tree_lambda_:.1f}, leaves={self.tree_.get_n_leaves()}",
+            "Tree structure (follow from root; at most "
+            f"{self.max_depth} decisions to reach a leaf):",
         ]
         lines.extend(self._tree_lines())
 
-        # Combined feature importances
-        linear_imp = np.abs(coef)
-        linear_imp = linear_imp / (linear_imp.sum() or 1.0)
-        tree_imp = importances / (importances.sum() or 1.0)
-        combined = 0.5 * linear_imp + 0.5 * tree_imp
-
-        order = np.argsort(combined)[::-1]
-        lines += ["", "Combined feature importances (linear + tree, higher = more important):"]
+        order = np.argsort(importances)[::-1]
+        lines += ["", "Feature importances (Gini-based, higher = more important):"]
         for rank, fi in enumerate(order):
-            if combined[fi] > 0.01:
-                lines.append(f"  {rank+1:2d}. {names[fi]:<25s}  {combined[fi]:.4f}")
+            if importances[fi] > 1e-6:
+                direction = self._infer_direction(fi)
+                lines.append(
+                    f"  {rank+1:2d}. {names[fi]:<25s}  {importances[fi]:.4f}  "
+                    f"(net effect: {direction})"
+                )
+
+        unused = [names[fi] for fi in range(len(names)) if importances[fi] <= 1e-6]
+        if unused:
+            lines.append(f"\nFeatures not used in tree (zero importance): {', '.join(unused)}")
 
         return "\n".join(lines)
 
