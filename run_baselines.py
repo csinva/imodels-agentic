@@ -1,13 +1,13 @@
 """
-Run interpretability tests and TabArena classification evaluation on a unified
-set of regressors/classifiers, then produce a combined performance plot.
+Run interpretability tests and TabArena regression evaluation on a unified
+set of regressors, then produce a combined performance plot.
 
-Usage: uv run run_all.py
+Usage: uv run run_baselines.py
 Outputs (all under results/):
   all_scores.json                    — interpretability fraction per model
   interpretability_per_test_results.csv
-  tabarena_scores.json               — avg rank + mean AUC per model
-  tabarena_results.csv               — per-dataset per-model AUC
+  tabarena_scores.json               — avg rank + mean RMSE per model
+  tabarena_results.csv               — per-dataset per-model RMSE
   interpretability_vs_performance.png
 """
 
@@ -21,36 +21,18 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.ensemble import (
-    GradientBoostingClassifier, GradientBoostingRegressor,
-    RandomForestClassifier, RandomForestRegressor,
-)
-from sklearn.linear_model import (
-    Lasso, LassoCV, LinearRegression, LogisticRegression, LogisticRegressionCV, RidgeCV,
-)
-from sklearn.neural_network import MLPClassifier, MLPRegressor
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.linear_model import Lasso, LassoCV, LinearRegression, RidgeCV
+from sklearn.neural_network import MLPRegressor
+from sklearn.tree import DecisionTreeRegressor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "eval"))
 from interp_eval import ALL_TESTS, HARD_TESTS, INSIGHT_TESTS, run_all_interp_tests
-from performance import evaluate_all_classifiers, compute_rank_scores, RESULTS_DIR, upsert_overall_results
+from performance import evaluate_all_regressors, compute_rank_scores, RESULTS_DIR, upsert_overall_results
 
 # ---------------------------------------------------------------------------
 # Model definitions
 # ---------------------------------------------------------------------------
-
-def _lr(penalty, **kw):
-    return Pipeline([("scaler", StandardScaler()),
-                     ("clf", LogisticRegression(penalty=penalty, solver="saga",
-                                                max_iter=200, random_state=42, **kw))])
-
-def _lr_cv(penalty):
-    return Pipeline([("scaler", StandardScaler()),
-                     ("clf", LogisticRegressionCV(penalty=penalty, solver="saga",
-                                                  Cs=10, cv=5, max_iter=200,
-                                                  random_state=42))])
 
 REGRESSOR_DEFS = [
     ("DT_mini",    DecisionTreeRegressor(max_leaf_nodes=8,  random_state=42)),
@@ -65,19 +47,6 @@ REGRESSOR_DEFS = [
                                 random_state=42, learning_rate_init=0.01)),
 ]
 
-CLASSIFIER_DEFS = [
-    ("DT_mini",    DecisionTreeClassifier(max_leaf_nodes=8,  random_state=42)),
-    ("DT_large",   DecisionTreeClassifier(max_leaf_nodes=20, random_state=42)),
-    ("OLS",        _lr("l2", C=1e6)),
-    ("LASSO",      _lr("l1", C=10.0)),
-    ("LassoCV",    _lr_cv("l1")),
-    ("RidgeCV",    _lr_cv("l2")),
-    ("RF",         RandomForestClassifier(n_estimators=50, max_depth=5, random_state=42)),
-    ("GBM",        GradientBoostingClassifier(n_estimators=100, max_depth=3, random_state=42)),
-    ("MLP",        MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=1000,
-                                 random_state=42, learning_rate_init=0.01)),
-]
-
 try:
     from pygam import LinearGAM
     REGRESSOR_DEFS = [("GAM", LinearGAM(n_splines=10))] + REGRESSOR_DEFS
@@ -86,10 +55,10 @@ except ImportError:
 
 try:
     from imodels import (
-        FIGSClassifier, FIGSRegressor,
-        HSTreeClassifier, HSTreeRegressor,
-        RuleFitClassifier, RuleFitRegressor,
-        TreeGAMClassifier, TreeGAMRegressor,
+        FIGSRegressor,
+        HSTreeRegressor,
+        RuleFitRegressor,
+        TreeGAMRegressor,
     )
     REGRESSOR_DEFS += [
         ("FIGS_mini",    FIGSRegressor(max_rules=8,  random_state=42)),
@@ -98,14 +67,6 @@ try:
         ("HSTree_mini",  HSTreeRegressor(max_leaf_nodes=8,  random_state=42)),
         ("HSTree_large", HSTreeRegressor(max_leaf_nodes=20, random_state=42)),
         ("TreeGAM",      TreeGAMRegressor(n_boosting_rounds=5, max_leaf_nodes=4, random_state=42)),
-    ]
-    CLASSIFIER_DEFS += [
-        ("FIGS_mini",    FIGSClassifier(max_rules=8)),
-        ("FIGS_large",   FIGSClassifier(max_rules=20)),
-        ("RuleFit",      RuleFitClassifier(max_rules=20, random_state=42)),
-        ("HSTree_mini",  HSTreeClassifier(max_leaf_nodes=8,  random_state=42)),
-        ("HSTree_large", HSTreeClassifier(max_leaf_nodes=20, random_state=42)),
-        ("TreeGAM",      TreeGAMClassifier(n_boosting_rounds=5, max_leaf_nodes=4, random_state=42)),
     ]
 except ImportError:
     pass
@@ -137,25 +98,25 @@ def _model_color(name):
 
 
 def plot_interp_vs_tabarena(interp_results, tabarena_csv_path, out_path):
-    """Scatter: x=TabArena mean AUC (±1 SEM across datasets), y=interpretability tests passed."""
+    """Scatter: x=TabArena mean RMSE (±1 SEM across datasets), y=interpretability tests passed."""
     from adjustText import adjust_text
 
-    tabarena_aucs = {}
+    tabarena_rmses = {}
     with open(tabarena_csv_path, newline="") as f:
         for row in csv.DictReader(f):
-            if row["auc"]:
-                tabarena_aucs.setdefault(row["model"], []).append(float(row["auc"]))
+            if row["rmse"]:
+                tabarena_rmses.setdefault(row["model"], []).append(float(row["rmse"]))
 
-    mean_auc = {m: float(np.mean(v)) for m, v in tabarena_aucs.items()}
-    sem_auc  = {m: float(np.std(v) / np.sqrt(len(v))) for m, v in tabarena_aucs.items()}
+    mean_rmse = {m: float(np.mean(v)) for m, v in tabarena_rmses.items()}
+    sem_rmse  = {m: float(np.std(v) / np.sqrt(len(v))) for m, v in tabarena_rmses.items()}
 
     model_names = list(dict.fromkeys(r["model"] for r in interp_results))
     n_passed = {n: sum(r["passed"] for r in interp_results if r["model"] == n)
                 for n in model_names}
 
-    names  = [n for n in model_names if n in mean_auc]
-    x      = np.array([mean_auc[n] for n in names])
-    x_err  = np.array([sem_auc[n]  for n in names])
+    names  = [n for n in model_names if n in mean_rmse]
+    x      = np.array([mean_rmse[n] for n in names])
+    x_err  = np.array([sem_rmse[n]  for n in names])
     y      = np.array([n_passed[n] for n in names])
     colors = [_model_color(n) for n in names]
 
@@ -170,7 +131,7 @@ def plot_interp_vs_tabarena(interp_results, tabarena_csv_path, out_path):
     adjust_text(texts, x=x, y=y, ax=ax,
                 arrowprops=dict(arrowstyle="-", color="grey", lw=0.6))
 
-    ax.set_xlabel("TabArena Mean AUC (±1 SEM across datasets)", fontsize=10)
+    ax.set_xlabel("TabArena Mean RMSE (±1 SEM across datasets)", fontsize=10)
     ax.set_ylabel("Interpretability Tests Passed (out of 18)", fontsize=10)
     ax.set_title("Interpretability vs. TabArena Performance", fontsize=12, fontweight="bold")
     ax.grid(True, alpha=0.3)
@@ -241,34 +202,34 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("  TABARENA EVALUATION")
     print("="*60)
-    dataset_aucs = evaluate_all_classifiers(CLASSIFIER_DEFS)
-    avg_rank, avg_auc = compute_rank_scores(dataset_aucs)
+    dataset_rmses = evaluate_all_regressors(REGRESSOR_DEFS)
+    avg_rank, avg_rmse = compute_rank_scores(dataset_rmses)
 
     print("\n\nTabArena summary (sorted by avg rank):")
     for name, rank in sorted(avg_rank.items(), key=lambda x: x[1]):
-        print(f"  {name:<15}: avg_rank={rank:.2f}  mean_auc={avg_auc.get(name, float('nan')):.4f}")
+        print(f"  {name:<15}: avg_rank={rank:.2f}  mean_rmse={avg_rmse.get(name, float('nan')):.4f}")
 
     with open(os.path.join(RESULTS_DIR, "tabarena_scores.json"), "w") as f:
-        json.dump({"tabarena_avg_rank": avg_rank, "tabarena_mean_auc": avg_auc,
-                   "tabarena_per_dataset": dataset_aucs}, f, indent=2)
+        json.dump({"tabarena_avg_rank": avg_rank, "tabarena_mean_rmse": avg_rmse,
+                   "tabarena_per_dataset": dataset_rmses}, f, indent=2)
 
     tabarena_csv = os.path.join(RESULTS_DIR, "tabarena_results.csv")
     with open(tabarena_csv, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["dataset", "model", "auc", "rank"])
-        for ds_name, model_aucs in dataset_aucs.items():
-            valid = [(n, v) for n, v in model_aucs.items() if not np.isnan(v)]
+        writer.writerow(["dataset", "model", "rmse", "rank"])
+        for ds_name, model_rmses in dataset_rmses.items():
+            valid = [(n, v) for n, v in model_rmses.items() if not np.isnan(v)]
             rank_map = {n: r + 1 for r, (n, _) in enumerate(
-                sorted(valid, key=lambda x: x[1], reverse=True))}
-            for name, auc in model_aucs.items():
+                sorted(valid, key=lambda x: x[1]))}  # ascending: lower RMSE = better
+            for name, rmse in model_rmses.items():
                 rank = rank_map.get(name, "")
-                writer.writerow([ds_name, name, "" if np.isnan(auc) else f"{auc:.6f}", rank])
+                writer.writerow([ds_name, name, "" if np.isnan(rmse) else f"{rmse:.6f}", rank])
     print(f"Per-dataset results saved → {tabarena_csv}")
 
     # --- Overall results CSV ---
     overall_rows = [{
         "model":                              mname,
-        "mean_auc":                           f"{avg_auc[mname]:.6f}" if mname in avg_auc else "",
+        "mean_rmse":                          f"{avg_rmse[mname]:.6f}" if mname in avg_rmse else "",
         "frac_interpretability_tests_passed": f"{interp_scores[mname]:.4f}",
     } for mname in model_names]
     upsert_overall_results(overall_rows, RESULTS_DIR)

@@ -1,6 +1,6 @@
 # autoresearch — interpretable regressors
 
-This is an experiment to have the LLM autonomously research scikit-learn regressors that score well on two metrics: predictive performance (mean AUC) and interpretability (fraction of LLM-graded tests passed).
+This is an experiment to have the LLM autonomously research scikit-learn regressors that score well on two metrics: predictive performance (mean RMSE) and interpretability (fraction of LLM-graded tests passed).
 
 ## Setup
 
@@ -13,8 +13,7 @@ To set up a new experiment, work with the user to:
    - `run_baselines.py` — the fixed baseline evaluation harness. This is NOT modified by the agent.
    - `model.py` — the file you modify. Regressor definition and evaluation loop.
    - `results/overall_results.csv` — current scores for all models including baselines.
-4. **Initialize the results/overall_results.csv**: Create `results.tsv` with just the header row. The baseline will be recorded after the first run.
-5. **Confirm and go**: Confirm setup looks good.
+4. **Confirm and go**: Confirm setup looks good.
 
 Once you get confirmation, kick off the experimentation.
 
@@ -39,12 +38,12 @@ This trains `InterpretableRegressor`, runs interpretability tests, and updates `
 
 ## Goal
 
-Maximize both metrics in `results/overall_results.csv`:
+Optimize both metrics in `results/overall_results.csv`:
 
-- **`mean_auc`** — mean AUC across TabArena classification datasets (higher is better)
+- **`mean_rmse`** — mean RMSE across TabArena regression datasets (lower is better)
 - **`frac_interpretability_tests_passed`** — fraction of LLM-graded interpretability tests passed (higher is better)
 
-Both metrics matter. A model that scores well on AUC but poorly on interpretability tests, or vice versa, is not ideal. Look at the baseline scores in `overall_results.csv` to understand the trade-off space.
+Both metrics matter. A model that scores well on RMSE but poorly on interpretability tests, or vice versa, is not ideal. Look at the baseline scores in `overall_results.csv` to understand the trade-off space.
 
 **Simplicity criterion**: All else being equal, simpler is better. A tiny metric gain that doubles code complexity is not worth it.
 
@@ -64,16 +63,16 @@ It also updates `results/overall_results.csv` with the row for `InterpretableReg
 
 ## Logging results
 
-When an experiment is done, log it to `results.tsv` (tab-separated, NOT comma-separated).
+When an experiment is done, it should log to the `results/overall_results.csv`
 
-The TSV has a header row and 4 columns:
+The CSV has a header row and 5 columns:
 
 ```
-commit	mean_auc	frac_interpretability_tests_passed	status	description
+commit	mean_rmse	frac_interpretability_tests_passed	status	description
 ```
 
 1. git commit hash (short, 7 chars)
-2. mean_auc achieved — use 0.000000 for crashes (note: model.py does not compute mean_auc; check overall_results.csv for the baseline value to compare against)
+2. mean_rmse achieved — use empty for crashes (note: model.py does not compute mean_rmse; check overall_results.csv for the baseline value to compare against)
 3. frac_interpretability_tests_passed — from the script output
 4. status: `keep`, `discard`, or `crash`
 5. short text description of what this experiment tried
@@ -90,7 +89,7 @@ LOOP FOREVER:
 4. Run the experiment: `uv run model.py > run.log 2>&1`
 5. Read results: `tail -n 5 run.log` and `grep InterpretableRegressor results/overall_results.csv`
 6. If the run crashed, check `tail -n 50 run.log` for the stack trace and attempt a fix
-7. Record results in `results.tsv` (do not commit this file)
+7. Record results in `results/overall_results.csv` (do not commit this file)
 8. If either metric improved without the other getting significantly worse, keep the commit
 9. Otherwise, `git reset --hard` back to the previous commit
 

@@ -25,6 +25,8 @@ from copy import deepcopy
 
 import numpy as np
 from joblib import Memory
+from imodels import FIGSRegressor, FIGSRegressorCV, HSTreeRegressor, HSTreeRegressorCV, RuleFitRegressor, TreeGAMRegressor
+from pygam import LinearGAM
 from sklearn.base import clone
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Lasso, LassoCV, LinearRegression, RidgeCV
@@ -34,18 +36,6 @@ from sklearn.tree import DecisionTreeRegressor, export_text
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import imodelsx.llm
-
-try:
-    from pygam import LinearGAM
-    _HAS_PYGAM = True
-except ImportError:
-    _HAS_PYGAM = False
-
-try:
-    import imodels as _imodels
-    _HAS_IMODELS = True
-except ImportError:
-    _HAS_IMODELS = False
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
 _memory = Memory(location=os.path.join(RESULTS_DIR, "cache"), verbose=0)
@@ -69,7 +59,7 @@ def _safe_clone(model):
 # ---------------------------------------------------------------------------
 
 def get_model_str(model, feature_names=None):
-    """Return a human-readable string for a fitted sklearn regressor."""
+    """Return a human-readable string for a fitted sklearn model."""
     if feature_names is None and hasattr(model, "n_features_in_"):
         feature_names = [f"x{i}" for i in range(model.n_features_in_)]
 
@@ -170,24 +160,20 @@ def get_model_str(model, feature_names=None):
             lines.append(f"  {name}: {w_str}  (L2={l2:.3f})")
         return "\n".join(lines)
 
-    if _HAS_IMODELS:
-        from imodels import FIGSRegressor, FIGSRegressorCV, RuleFitRegressor, HSTreeRegressor, HSTreeRegressorCV, TreeGAMRegressor
-        if isinstance(model, FIGSRegressorCV):
-            return str(model.figs)
-        if isinstance(model, HSTreeRegressorCV):
-            return str(model)
-        if isinstance(model, (FIGSRegressor, RuleFitRegressor, HSTreeRegressor)):
-            return str(model)
-        if isinstance(model, TreeGAMRegressor):
-            return _tree_gam_str(model, feature_names)
+    if isinstance(model, FIGSRegressorCV):
+        return str(model.figs)
+    if isinstance(model, HSTreeRegressorCV):
+        return str(model)
+    if isinstance(model, (FIGSRegressor, RuleFitRegressor, HSTreeRegressor)):
+        return str(model)
+    if isinstance(model, TreeGAMRegressor):
+        return _tree_gam_str(model, feature_names)
 
-    if _HAS_PYGAM:
-        from pygam import LinearGAM
-        if isinstance(model, LinearGAM):
-            if feature_names is None and hasattr(model, "statistics_"):
-                n_f = model.statistics_.get("m_features", 0)
-                feature_names = [f"x{i}" for i in range(n_f)]
-            return _gam_str(model, feature_names)
+    if isinstance(model, LinearGAM):
+        if feature_names is None and hasattr(model, "statistics_"):
+            n_f = model.statistics_.get("m_features", 0)
+            feature_names = [f"x{i}" for i in range(n_f)]
+        return _gam_str(model, feature_names)
 
     return str(model)
 

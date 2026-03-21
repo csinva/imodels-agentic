@@ -1,11 +1,11 @@
 """
-Shared evaluation utilities for TabArena classification benchmarking.
+Shared evaluation utilities for TabArena regression benchmarking.
 
 Exports:
   MAX_SAMPLES, MAX_FEATURES, SUBSAMPLE_SEED
   subsample_dataset(X_train, X_test, y_train, y_test, ...) -> tuple
-  evaluate_all_classifiers(model_defs) -> {dataset: {model: auc}}
-  compute_rank_scores(dataset_aucs) -> (avg_rank, avg_auc)
+  evaluate_all_regressors(model_defs) -> {dataset: {model: rmse}}
+  compute_rank_scores(dataset_rmses) -> (avg_rank, avg_rmse)
   upsert_overall_results(rows, results_dir) -> writes/updates overall_results.csv
 """
 
@@ -15,29 +15,22 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 from joblib import Memory
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
+from sklearn.preprocessing import OrdinalEncoder
 
 # ---------------------------------------------------------------------------
-# Dataset loading (previously in prepare.py)
+# Dataset loading
 # ---------------------------------------------------------------------------
 
 DATASET_NAMES = [
-    "adult",
-    "blood-transfusion-service-center",
-    "breast-cancer",
     "california",
-    "credit-g",
-    "diabetes",
-    "higgs",
-    "jannis",
-    "kr-vs-kp",
-    "mfeat-factors",
-    "numerai28.6",
-    "phoneme",
-    "sylvine",
-    "volkert",
+    "abalone",
+    "cpu_act",
+    "house_16H",
+    "elevators",
+    "pol",
+    "kin8nm",
 ]
 
 _CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "imodels-evolve")
@@ -62,12 +55,17 @@ def _load_dataset(name):
 
     y_raw = df["__target__"].values
     X_raw = df.drop(columns=["__target__"])
-    y = LabelEncoder().fit_transform(y_raw.astype(str))
+    y = pd.to_numeric(pd.Series(y_raw), errors="coerce").values.astype(float)
+
+    # Drop rows with missing targets
+    valid = ~np.isnan(y)
+    y = y[valid]
+    X_raw = X_raw[valid]
 
     cat_cols = X_raw.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
     num_cols = [c for c in X_raw.columns if c not in cat_cols]
 
-    X_tr, X_te, y_tr, y_te = train_test_split(X_raw, y, test_size=0.2, random_state=42, stratify=y)
+    X_tr, X_te, y_tr, y_te = train_test_split(X_raw, y, test_size=0.2, random_state=42)
 
     for col in num_cols:
         median = X_tr[col].median()
@@ -116,47 +114,41 @@ def subsample_dataset(X_train, X_test, y_train, y_test,
 
 
 @_memory.cache
-def _run_one_classifier(model_name, ds_name, clf,
-                        X_train, X_test, y_train, y_test):
-    """Fit one classifier on one dataset and return AUC. Cached by joblib."""
-    n_classes = len(np.unique(y_train))
+def _run_one_regressor(model_name, ds_name, reg,
+                       X_train, X_test, y_train, y_test):
+    """Fit one regressor on one dataset and return RMSE. Cached by joblib."""
     try:
-        m = deepcopy(clf)
+        m = deepcopy(reg)
         m.fit(X_train, y_train)
-        if n_classes == 2:
-            proba = m.predict_proba(X_test)[:, 1]
-            auc = roc_auc_score(y_test, proba)
-        else:
-            proba = m.predict_proba(X_test)
-            auc = roc_auc_score(y_test, proba, multi_class="ovr", average="macro")
-        return float(auc)
+        preds = m.predict(X_test)
+        rmse = float(np.sqrt(mean_squared_error(y_test, preds)))
+        return rmse
     except Exception as e:
         return str(e)   # cache the error message too
 
 
 def _eval_one_dataset(ds_name, X_train, X_test, y_train, y_test, model_defs):
-    """Evaluate all classifiers on one dataset. Returns (ds_name, {model_name: auc})."""
+    """Evaluate all regressors on one dataset. Returns (ds_name, {model_name: rmse})."""
     X_train, X_test, y_train, y_test = subsample_dataset(X_train, X_test, y_train, y_test)
-    n_classes = len(np.unique(y_train))
     print(f"\n  Dataset: {ds_name} — {X_train.shape[1]} features, "
-          f"{len(X_train)} train samples, {n_classes} classes")
-    model_aucs = {}
-    for name, clf in model_defs:
-        result = _run_one_classifier(name, ds_name, clf, X_train, X_test, y_train, y_test)
+          f"{len(X_train)} train samples")
+    model_rmses = {}
+    for name, reg in model_defs:
+        result = _run_one_regressor(name, ds_name, reg, X_train, X_test, y_train, y_test)
         if isinstance(result, float):
-            model_aucs[name] = result
+            model_rmses[name] = result
             print(f"    {name:<15}: {result:.4f}")
         else:
             print(f"    {name:<15}: ERROR — {result}")
-            model_aucs[name] = float("nan")
-    return ds_name, model_aucs
+            model_rmses[name] = float("nan")
+    return ds_name, model_rmses
 
 
-def evaluate_all_classifiers(model_defs):
-    """Evaluate all classifiers on every TabArena dataset (subsampled).
+def evaluate_all_regressors(model_defs):
+    """Evaluate all regressors on every TabArena dataset (subsampled).
 
     Returns:
-        dataset_aucs : {dataset_name: {model_name: auc}}
+        dataset_rmses : {dataset_name: {model_name: rmse}}
     """
     from joblib import Parallel, delayed
 
@@ -168,34 +160,34 @@ def evaluate_all_classifiers(model_defs):
     return dict(results)
 
 
-def compute_rank_scores(dataset_aucs):
-    """For each dataset rank models by AUC (1=best), then average ranks."""
+def compute_rank_scores(dataset_rmses):
+    """For each dataset rank models by RMSE (1=best/lowest), then average ranks."""
     all_model_names = set()
-    for d in dataset_aucs.values():
+    for d in dataset_rmses.values():
         all_model_names.update(d.keys())
 
     ranks_per_model = {n: [] for n in all_model_names}
-    mean_auc_per_model = {n: [] for n in all_model_names}
+    mean_rmse_per_model = {n: [] for n in all_model_names}
 
-    for ds_name, model_aucs in dataset_aucs.items():
-        valid = [(n, v) for n, v in model_aucs.items() if not np.isnan(v)]
-        sorted_models = sorted(valid, key=lambda x: x[1], reverse=True)
+    for ds_name, model_rmses in dataset_rmses.items():
+        valid = [(n, v) for n, v in model_rmses.items() if not np.isnan(v)]
+        sorted_models = sorted(valid, key=lambda x: x[1])  # ascending: lower RMSE = better rank
         rank_map = {n: r + 1 for r, (n, _) in enumerate(sorted_models)}
         for name in all_model_names:
-            if name in model_aucs and not np.isnan(model_aucs[name]):
+            if name in model_rmses and not np.isnan(model_rmses[name]):
                 ranks_per_model[name].append(rank_map[name])
-                mean_auc_per_model[name].append(model_aucs[name])
+                mean_rmse_per_model[name].append(model_rmses[name])
 
     avg_rank = {n: float(np.mean(v)) for n, v in ranks_per_model.items() if v}
-    avg_auc  = {n: float(np.mean(v)) for n, v in mean_auc_per_model.items() if v}
-    return avg_rank, avg_auc
+    avg_rmse = {n: float(np.mean(v)) for n, v in mean_rmse_per_model.items() if v}
+    return avg_rank, avg_rmse
 
 
 # ---------------------------------------------------------------------------
 # Overall results CSV
 # ---------------------------------------------------------------------------
 
-OVERALL_CSV_COLS = ["model", "mean_auc", "frac_interpretability_tests_passed"]
+OVERALL_CSV_COLS = ["model", "mean_rmse", "frac_interpretability_tests_passed"]
 
 
 def upsert_overall_results(rows, results_dir):
