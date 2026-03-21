@@ -29,24 +29,25 @@ from performance import RESULTS_DIR, upsert_overall_results, evaluate_all_regres
 
 class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
-    CV-HSDT-FDR-Grouped + Unit Sensitivity section (CV-HSDT-FDR-Grouped-UnitSens):
-    35-leaf tree + HSDT shrinkage with 2-group rules, PLUS a unit sensitivity section
-    that pre-computes delta_prediction when each feature increases from 0 to 1 (others=0).
+    CV-HSDT-FDR-Grouped with Multi-Seed Tree Selection (CV-HSDT-FDR-Grouped-MultiSeed):
+    35-leaf tree + HSDT shrinkage with 2-group rules. Uses 5-seed multi-start:
+    CV jointly selects the best (random_seed, lambda) combination across 5 seeds,
+    potentially finding a better tree structure than the default seed=42.
 
-    This directly answers 'discrim_unit_sensitivity' questions, potentially improving
-    interp from 0.84 to 0.88 without changing the underlying algorithm.
+    For datasets with tie-breaking in splits, different seeds can give better trees.
 
     Shrinkage formula (top-down):
       shrunk[node] = orig[node] + lam * (shrunk[parent] - orig[node]) / (n_samples + lam)
 
-    Lambda grid: [1, 3, 7, 15, 30, 60]. 35 leaves for RMSE.
-    repr_v=20 to bust joblib cache.
+    Lambda grid: [1, 3, 7, 15, 30, 60]. Seeds: [0, 1, 2, 3, 42].
+    repr_v=21 to bust joblib cache.
     """
 
     LAMBDA_GRID = [1.0, 3.0, 7.0, 15.0, 30.0, 60.0]
+    SEED_GRID = [0, 1, 2, 3, 42]
 
     def __init__(self, max_leaf_nodes=35, min_samples_leaf=5, shrinkage_lambda="cv", cv=5,
-                 repr_v=20):
+                 repr_v=21):
         self.max_leaf_nodes = max_leaf_nodes
         self.min_samples_leaf = min_samples_leaf
         self.shrinkage_lambda = shrinkage_lambda
@@ -73,26 +74,28 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         shrink(0, orig[0])
         return shrunk
 
-    def _select_lambda(self, X_arr, y_arr):
+    def _select_seed_and_lambda(self, X_arr, y_arr):
+        """Select best (seed, lambda) combination via CV."""
         kf = KFold(n_splits=self.cv, shuffle=True, random_state=42)
-        best_lam, best_mse = None, np.inf
-        for lam in self.LAMBDA_GRID:
-            fold_mses = []
-            for tr_idx, va_idx in kf.split(X_arr):
-                X_tr, X_va = X_arr[tr_idx], X_arr[va_idx]
-                y_tr, y_va = y_arr[tr_idx], y_arr[va_idx]
-                tree = DecisionTreeRegressor(
-                    max_leaf_nodes=self.max_leaf_nodes,
-                    min_samples_leaf=self.min_samples_leaf,
-                    random_state=42,
-                )
-                tree.fit(X_tr, y_tr)
-                sv = self._compute_shrinkage(tree, lam)
-                fold_mses.append(np.mean((y_va - sv[tree.apply(X_va)]) ** 2))
-            mse = np.mean(fold_mses)
-            if mse < best_mse:
-                best_mse, best_lam = mse, lam
-        return best_lam
+        best_seed, best_lam, best_mse = 42, self.LAMBDA_GRID[0], np.inf
+        for seed in self.SEED_GRID:
+            for lam in self.LAMBDA_GRID:
+                fold_mses = []
+                for tr_idx, va_idx in kf.split(X_arr):
+                    X_tr, X_va = X_arr[tr_idx], X_arr[va_idx]
+                    y_tr, y_va = y_arr[tr_idx], y_arr[va_idx]
+                    tree = DecisionTreeRegressor(
+                        max_leaf_nodes=self.max_leaf_nodes,
+                        min_samples_leaf=self.min_samples_leaf,
+                        random_state=seed,
+                    )
+                    tree.fit(X_tr, y_tr)
+                    sv = self._compute_shrinkage(tree, lam)
+                    fold_mses.append(np.mean((y_va - sv[tree.apply(X_va)]) ** 2))
+                mse = np.mean(fold_mses)
+                if mse < best_mse:
+                    best_mse, best_seed, best_lam = mse, seed, lam
+        return best_seed, best_lam
 
     def fit(self, X, y):
         if hasattr(X, "columns"):
@@ -104,14 +107,15 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         y_arr = np.asarray(y, dtype=float)
 
         if self.shrinkage_lambda == "cv":
-            self.lambda_ = self._select_lambda(X_arr, y_arr)
+            self.seed_, self.lambda_ = self._select_seed_and_lambda(X_arr, y_arr)
         else:
+            self.seed_ = 42
             self.lambda_ = float(self.shrinkage_lambda)
 
         self.tree_ = DecisionTreeRegressor(
             max_leaf_nodes=self.max_leaf_nodes,
             min_samples_leaf=self.min_samples_leaf,
-            random_state=42,
+            random_state=self.seed_,
         )
         self.tree_.fit(X_arr, y_arr)
         self.shrunk_values_ = self._compute_shrinkage(self.tree_, self.lambda_)
@@ -188,18 +192,6 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
             return "negative (higher → lower prediction)"
         return "mixed"
 
-    def _unit_sensitivity(self):
-        """Return prediction change for each feature going from 0 to 1, all others at 0."""
-        n = len(self.feature_names_in_)
-        x_base = np.zeros((1, n))
-        base_pred = float(self.predict(x_base)[0])
-        deltas = {}
-        for i, name in enumerate(self.feature_names_in_):
-            x_hi = x_base.copy()
-            x_hi[0, i] = 1.0
-            deltas[name] = float(self.predict(x_hi)[0]) - base_pred
-        return base_pred, deltas
-
     def __str__(self):
         check_is_fitted(self, "tree_")
         names = self.feature_names_in_
@@ -209,7 +201,7 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
 
         lines = [
             f"CV_HSDT_FDR_Grouped(max_leaf_nodes={self.max_leaf_nodes}, "
-            f"selected_lambda={self.lambda_:.1f}, cv={self.cv})",
+            f"selected_lambda={self.lambda_:.1f}, seed={self.seed_}, cv={self.cv})",
             f"  nodes={t.node_count}, leaves={n_leaves}",
             "",
             "Tree structure (follow from root; leaf values are shrunk predictions):",
@@ -250,15 +242,6 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         unused = [names[fi] for fi in range(len(names)) if importances[fi] <= 1e-6]
         if unused:
             lines.append(f"\nFeatures not used in tree (zero importance): {', '.join(unused)}")
-
-        base_pred, deltas = self._unit_sensitivity()
-        lines += [
-            "",
-            f"Unit sensitivity (prediction change from 0→1 per feature, all others=0; baseline x=0 predicts {base_pred:.4f}):",
-        ]
-        for name in names:
-            d = deltas[name]
-            lines.append(f"  {name}: {d:+.4f}")
 
         return "\n".join(lines)
 
