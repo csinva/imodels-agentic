@@ -1,5 +1,11 @@
 """
-Shared evaluation utilities for TabArena regression benchmarking.
+Shared evaluation utilities for regression benchmarking.
+
+Datasets: 7 TabArena (OpenML) regression datasets + all 165 PMLB regression datasets.
+
+Note that currently we normalize the outcome variable (y) to zero mean and unit std based on training set statistics only, to put all datasets on a similar scale and avoid leakage. This means that RMSE values are not directly comparable across datasets, but relative performance of models within each dataset is still meaningful.
+We also subsample datasets to a maximum of 1000 training samples and 25 features (with a fixed random seed) and a minimum of 50 training samples and 3 features to speed up evaluation and focus on the low-data regime where interpretability is often most valuable.
+We also only use the first 25 PMLB datasets for now.
 
 Exports:
   MAX_SAMPLES, MAX_FEATURES, SUBSAMPLE_SEED
@@ -15,15 +21,24 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 from joblib import Memory
+from pmlb import fetch_data, regression_dataset_names
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OrdinalEncoder
+import openml
 
 # ---------------------------------------------------------------------------
 # Dataset loading
 # ---------------------------------------------------------------------------
+MAX_SAMPLES = 1000
+MAX_FEATURES = 25
+MIN_SAMPLES = 50
+MIN_FEATURES = 3
+SUBSAMPLE_SEED = 42
+MAX_PMLB_DATASETS = 25  # for now, to speed up evaluation (can remove this limit later)
 
-DATASET_NAMES = [
+
+OPENML_DATASET_NAMES = [
     "california",
     "abalone",
     "cpu_act",
@@ -33,13 +48,16 @@ DATASET_NAMES = [
     "kin8nm",
 ]
 
+PMLB_DATASET_NAMES = sorted(list(regression_dataset_names))
+PMLB_DATASET_NAMES = PMLB_DATASET_NAMES[:MAX_PMLB_DATASETS]  # for now, to speed up evaluation (can remove this limit later)
+
 _CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "imodels-evolve")
+_PMLB_CACHE_DIR = os.path.join(_CACHE_DIR, "pmlb")
 
 
-def _load_dataset(name):
+def _load_openml_dataset(name):
     path = os.path.join(_CACHE_DIR, f"{name}.parquet")
     if not os.path.exists(path):
-        import openml
         os.makedirs(_CACHE_DIR, exist_ok=True)
         openml.config.cache_directory = os.path.join(_CACHE_DIR, "openml")
         datasets_list = openml.datasets.list_datasets(output_format="dataframe")
@@ -57,7 +75,6 @@ def _load_dataset(name):
     X_raw = df.drop(columns=["__target__"])
     y = pd.to_numeric(pd.Series(y_raw), errors="coerce").values.astype(float)
 
-    # Drop rows with missing targets
     valid = ~np.isnan(y)
     y = y[valid]
     X_raw = X_raw[valid]
@@ -80,20 +97,49 @@ def _load_dataset(name):
     return X_tr.astype(np.float32).values, X_te.astype(np.float32).values, y_tr, y_te
 
 
+def _load_pmlb_dataset(name):
+    os.makedirs(_PMLB_CACHE_DIR, exist_ok=True)
+    df = fetch_data(name, local_cache_dir=_PMLB_CACHE_DIR)
+
+    y = df["target"].values.astype(float)
+    X = df.drop(columns=["target"]).values.astype(np.float32)
+
+    # Skip datasets with fewer than MIN_SAMPLES samples (too small to split)
+    if len(X) < MIN_SAMPLES:
+        raise ValueError(f"Too few samples: {len(X)}")
+
+    if X.shape[1] < MIN_FEATURES:
+        raise ValueError(f"Too few features: {X.shape[1]}")
+
+    # Drop rows with NaN targets
+    valid = ~np.isnan(y)
+    X, y = X[valid], y[valid]
+
+    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42)
+    return X_tr, X_te, y_tr, y_te
+
+
 def get_all_datasets():
-    """Yield (name, X_train, X_test, y_train, y_test) for each TabArena dataset."""
-    for name in DATASET_NAMES:
+    """Yield (name, X_train, X_test, y_train, y_test) for all datasets.
+
+    Sources:
+      - 7 TabArena/OpenML datasets (OPENML_DATASET_NAMES)
+      - 165 PMLB regression datasets (PMLB_DATASET_NAMES)
+    """
+    for name in OPENML_DATASET_NAMES:
         try:
-            yield (name, *_load_dataset(name))
+            yield (name, *_load_openml_dataset(name))
         except Exception as e:
-            print(f"  WARNING: skipping '{name}': {e}")
+            print(f"  WARNING: skipping openml '{name}': {e}")
+
+    for name in PMLB_DATASET_NAMES:
+        try:
+            yield (f"pmlb/{name}", *_load_pmlb_dataset(name))
+        except Exception as e:
+            print(f"  WARNING: skipping pmlb '{name}': {e}")
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
 _memory = Memory(location=os.path.join(RESULTS_DIR, "cache"), verbose=0)
-
-MAX_SAMPLES = 1000
-MAX_FEATURES = 25
-SUBSAMPLE_SEED = 42
 
 
 def subsample_dataset(X_train, X_test, y_train, y_test,
@@ -130,6 +176,13 @@ def _run_one_regressor(model_name, ds_name, reg,
 def _eval_one_dataset(ds_name, X_train, X_test, y_train, y_test, model_defs):
     """Evaluate all regressors on one dataset. Returns (ds_name, {model_name: rmse})."""
     X_train, X_test, y_train, y_test = subsample_dataset(X_train, X_test, y_train, y_test)
+
+    if len(X_train) < MIN_SAMPLES:
+        print(f"  Skipping {ds_name}: only {len(X_train)} training samples")
+        return ds_name, {}
+    if X_train.shape[1] < MIN_FEATURES:
+        print(f"  Skipping {ds_name}: only {X_train.shape[1]} features")
+        return ds_name, {}
 
     # Normalize outcome variable using training-set statistics only (avoid leakage)
     y_mean = float(y_train.mean())

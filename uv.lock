@@ -1338,6 +1338,7 @@ dependencies = [
     { name = "openml" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pmlb" },
     { name = "pyarrow" },
     { name = "pygam" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1358,6 +1359,7 @@ requires-dist = [
     { name = "openai", specifier = ">=2.29.0" },
     { name = "openml", specifier = ">=0.14.0" },
     { name = "pandas", specifier = ">=2.0.0" },
+    { name = "pmlb", specifier = ">=1.0.1.post3" },
     { name = "pyarrow", specifier = ">=14.0.0" },
     { name = "pygam", specifier = ">=0.12.0" },
     { name = "scikit-learn", specifier = ">=1.3.0" },
@@ -2986,6 +2988,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/00/98/fc53ab36da80b88df0967896b6c4b4cd948a0dc5aa40a754266aa3ae48b3/pillow-12.1.1-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f975aa7ef9684ce7e2c18a3aa8f8e2106ce1e46b94ab713d156b2898811651d3", size = 5313850, upload-time = "2026-02-11T04:23:00.554Z" },
     { url = "https://files.pythonhosted.org/packages/30/02/00fa585abfd9fe9d73e5f6e554dc36cc2b842898cbfc46d70353dae227f8/pillow-12.1.1-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8089c852a56c2966cf18835db62d9b34fef7ba74c726ad943928d494fa7f4735", size = 5963343, upload-time = "2026-02-11T04:23:02.934Z" },
     { url = "https://files.pythonhosted.org/packages/f2/26/c56ce33ca856e358d27fda9676c055395abddb82c35ac0f593877ed4562e/pillow-12.1.1-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:cb9bb857b2d057c6dfc72ac5f3b44836924ba15721882ef103cecb40d002d80e", size = 7029880, upload-time = "2026-02-11T04:23:04.783Z" },
+]
+
+[[package]]
+name = "pmlb"
+version = "1.0.1.post3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pyyaml" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6a/db/187a171dd5fcf2fca01691c79f83533e08cdeed2d8abd8a404698aaea31b/pmlb-1.0.1.post3.tar.gz", hash = "sha256:ff1195abf0b54f2e06ea8f30c95a746e6561c5d5e01ef83950158cb7ff58a315", size = 11041, upload-time = "2020-09-10T22:53:54.901Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/e3/6e6d1cb10b6736ceb1693f6ad8f8f979a3c8a101e9b20c4fd1a1613d3a76/pmlb-1.0.1.post3-py3-none-any.whl", hash = "sha256:bca36d3cc749978d986c86728387ac35785e41c3e22d5ae508b665903b3360aa", size = 19490, upload-time = "2020-09-10T22:53:53.883Z" },
 ]
 
 [[package]]
