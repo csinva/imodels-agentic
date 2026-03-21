@@ -168,6 +168,7 @@ def _run_one_regressor(model_name, ds_name, reg,
         m.fit(X_train, y_train)
         preds = m.predict(X_test)
         rmse = float(np.sqrt(mean_squared_error(y_test, preds)))
+        print('Completed fitting!')
         return rmse
     except Exception as e:
         return str(e)   # cache the error message too

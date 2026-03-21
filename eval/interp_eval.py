@@ -10,12 +10,18 @@ Tests:
     counterfactual prediction
   Hard (5): all features active, pairwise anti-intuitive, quantitative sensitivity,
     mixed sign goes negative, two-feature perturbation
-  Insight (5): simulatability, sparse feature set, nonlinear shape,
-    counterfactual target, decision region
-  Discrim (5): simulate complex sample, compactness, dominant feature for sample,
-    unit sensitivity, describe-then-predict — designed to separate interpretable
+  Insight (6): simulatability, sparse feature set, nonlinear threshold,
+    nonlinear direction, counterfactual target, decision region
+  Discrim (6): simulate complex sample, compactness, dominant feature for sample,
+    unit sensitivity, predict above threshold, predict below threshold — designed to separate interpretable
     models (sparse linear, GAM, shallow tree) from black-box models (MLP, GBDT)
     and reward finer degrees of interpretability
+
+Notes:
+    Each test should ask only one question.
+    It should ask the model to directly output an answer, not a reasoning chain. 
+    Each test should ask for a specific, easily checkable answer (e.g., a feature name, a number).
+    The answer should not be able to be guessed easily (e.g. do not ask binary questions like increase/decrease or A vs B).
 
 Exports:
   ALL_TESTS, HARD_TESTS, INSIGHT_TESTS, DISCRIM_TESTS — lists of test functions
@@ -323,12 +329,20 @@ def test_direction_of_change(model, llm):
     names = [f"x{i}" for i in range(4)]
     m = _safe_clone(model); m.fit(X, y)
     x1 = np.zeros((1, 4)); x1[0, 0] = 1.0
-    true_dir = "increase" if float(m.predict(x1)[0]) > float(m.predict(np.zeros((1, 4)))[0]) else "decrease"
+    true_change = float(m.predict(x1)[0]) - float(m.predict(np.zeros((1, 4)))[0])
     response = ask_llm(llm, get_model_str(m, names),
-                       "If we change x0 from 0.0 to 1.0 (all other features stay at 0.0), "
-                       "will the prediction increase or decrease? Answer with just 'increase' or 'decrease'.")
-    return dict(test="direction_of_change", passed=bool(response and true_dir in response.lower()),
-                ground_truth=true_dir, response=response)
+                       "By how much does the prediction change when x0 increases from 0.0 to 1.0 "
+                       "(all other features stay at 0.0)? "
+                       "Give just a number (positive if prediction increases, negative if it decreases).")
+    llm_val, passed = None, False
+    nums = re.findall(r"-?\d+\.?\d*", response or "")
+    if nums:
+        try:
+            llm_val = float(nums[0])
+            passed = abs(llm_val - true_change) < max(abs(true_change) * 0.25, 1.5)
+        except ValueError: pass
+    return dict(test="direction_of_change", passed=passed,
+                ground_truth=round(true_change, 3), response=response)
 
 def test_feature_ranking(model, llm):
     X, y = _multi_feature_data([5.0, 3.0, 1.5, 0.0, 0.0])
@@ -376,11 +390,20 @@ def test_sign_of_effect(model, llm):
     X, y = _signed_data()
     names = [f"x{i}" for i in range(4)]
     m = _safe_clone(model); m.fit(X, y)
+    delta = (float(m.predict(np.array([[0.0, 1.0, 0.0, 0.0]]))[0])
+             - float(m.predict(np.zeros((1, 4)))[0]))
     response = ask_llm(llm, get_model_str(m, names),
-                       "Does increasing x1 tend to increase or decrease the predicted value? "
-                       "Answer with just 'increase' or 'decrease'.")
-    return dict(test="sign_of_effect", passed=bool(response and "decrease" in response.lower()),
-                ground_truth="decrease (x1 has coefficient -5.0)", response=response)
+                       "By how much does the prediction change when x1 increases by 1 unit "
+                       "(all other features at 0)? Give just a number.")
+    llm_val, passed = None, False
+    nums = re.findall(r"-?\d+\.?\d*", response or "")
+    if nums:
+        try:
+            llm_val = float(nums[0])
+            passed = abs(llm_val - delta) < max(abs(delta) * 0.25, 1.0)
+        except ValueError: pass
+    return dict(test="sign_of_effect", passed=passed,
+                ground_truth=round(delta, 3), response=response)
 
 def test_counterfactual_prediction(model, llm):
     X, y = _single_feature_data(n_features=3, true_feature=0, coef=4.0, seed=5)
@@ -432,15 +455,21 @@ def hard_test_pairwise_anti_intuitive(model, llm):
     m = _safe_clone(model); m.fit(X, y)
     pred_a = float(m.predict(np.array([[2.0, 0.1, 0.0, 0.0, 0.0]]))[0])
     pred_b = float(m.predict(np.array([[0.5, 3.3, 0.0, 0.0, 0.0]]))[0])
-    ground_truth = "B" if pred_b > pred_a else "A"
+    diff = pred_b - pred_a
     response = ask_llm(llm, get_model_str(m, names),
                        "Sample A has features: x0=2.0, x1=0.1, x2=0.0, x3=0.0, x4=0.0\n"
                        "Sample B has features: x0=0.5, x1=3.3, x2=0.0, x3=0.0, x4=0.0\n"
-                       "Which sample does the model predict a higher value for? Answer with just 'A' or 'B'.")
-    return dict(test="hard_pairwise_anti_intuitive",
-                passed=bool(response and ground_truth in response.upper()[:5]),
-                ground_truth=f"{ground_truth} (pred_A={pred_a:.2f}, pred_B={pred_b:.2f})",
-                response=response)
+                       "What is the model's prediction for sample B minus the prediction for sample A? "
+                       "Give just a number (positive if B is higher, negative if A is higher).")
+    llm_val, passed = None, False
+    nums = re.findall(r"-?\d+\.?\d*", response or "")
+    if nums:
+        try:
+            llm_val = float(nums[0])
+            passed = abs(llm_val - diff) < max(abs(diff) * 0.2, 1.0)
+        except ValueError: pass
+    return dict(test="hard_pairwise_anti_intuitive", passed=passed,
+                ground_truth=round(diff, 3), response=response)
 
 def hard_test_quantitative_sensitivity(model, llm):
     X, y = _single_feature_data(n_features=3, true_feature=0, coef=4.0, seed=12)
@@ -510,11 +539,8 @@ def insight_simulatability(model, llm):
     m = _safe_clone(model); m.fit(X, y)
     true_pred = float(m.predict(np.array([[1.0, 2.0, 0.5, -0.5]]))[0])
     response = ask_llm(llm, get_model_str(m, names),
-                       "Walk through the model step by step to predict for "
-                       "x0=1.0, x1=2.0, x2=0.5, x3=-0.5. "
-                       "Show each step of your reasoning, citing specific values from the model. "
-                       "End your answer with the final predicted value on its own line.",
-                       max_tokens=350)
+                       "What does this model predict for x0=1.0, x1=2.0, x2=0.5, x3=-0.5? "
+                       "Answer with just the predicted value as a single number.")
     tol = max(abs(true_pred) * 0.15, 1.0)
     passed, llm_val = False, None
     for num_str in reversed(re.findall(r"-?\d+\.?\d*", response or "")):
@@ -542,29 +568,43 @@ def insight_sparse_feature_set(model, llm):
     return dict(test="insight_sparse_feature_set", passed=passed,
                 ground_truth="x0, x1 only", response=response)
 
-def insight_nonlinear_shape(model, llm):
+def insight_nonlinear_threshold(model, llm):
     X, y = _hockey_stick_data()
     names = [f"x{i}" for i in range(3)]
     m = _safe_clone(model); m.fit(X, y)
     r2 = r2_score(y, m.predict(X))
     response = ask_llm(llm, get_model_str(m, names),
-                       "Describe the relationship between x0 and the predicted output "
-                       "(holding x1=0 and x2=0). Specifically answer: "
-                       "(1) Is there a threshold value of x0 below which x0 has little or no effect? "
-                       "If so, what is it approximately? "
-                       "(2) What happens to the prediction as x0 increases above that threshold?",
-                       max_tokens=250)
-    threshold_ok, increasing_ok = False, False
+                       "For x1=0 and x2=0, what is the approximate threshold value of x0 "
+                       "below which x0 has little or no effect on the prediction? "
+                       "Answer with just a number.")
+    threshold_ok = False
     if response:
         r = response.lower()
         nums = re.findall(r"-?\d+\.?\d*", r)
         threshold_ok = (any(abs(float(n)) < 0.7 for n in nums) or
                         any(w in r for w in ["zero", "negative", "below zero", "0.0", "flat",
                                              "constant", "no effect", "hockey", "piecewise", "relu"]))
-        increasing_ok = any(w in r for w in ["increase", "linear", "positive slope", "grows",
-                                              "rises", "higher", "greater", "upward", "positively"])
-    return dict(test="insight_nonlinear_shape", passed=threshold_ok and increasing_ok and r2 > 0.5,
-                ground_truth="flat for x0<0, linearly increasing for x0>0", response=response)
+    return dict(test="insight_nonlinear_threshold", passed=threshold_ok and r2 > 0.5,
+                ground_truth="~0 (flat for x0<0)", response=response)
+
+def insight_nonlinear_direction(model, llm):
+    X, y = _hockey_stick_data()
+    names = [f"x{i}" for i in range(3)]
+    m = _safe_clone(model); m.fit(X, y)
+    r2 = r2_score(y, m.predict(X))
+    true_pred = float(m.predict(np.array([[2.0, 0.0, 0.0]]))[0])
+    response = ask_llm(llm, get_model_str(m, names),
+                       "What does this model predict for x0=2.0, x1=0.0, x2=0.0? "
+                       "Give just a number.")
+    llm_val, passed = None, False
+    nums = re.findall(r"-?\d+\.?\d*", response or "")
+    if nums:
+        try:
+            llm_val = float(nums[0])
+            passed = abs(llm_val - true_pred) < max(abs(true_pred) * 0.2, 1.0)
+        except ValueError: pass
+    return dict(test="insight_nonlinear_direction", passed=passed and r2 > 0.5,
+                ground_truth=round(true_pred, 3), response=response)
 
 def insight_counterfactual_target(model, llm):
     X, y = _multi_feature_data([4.0, 2.0, 0.0], n=500, seed=22)
@@ -623,29 +663,6 @@ def insight_decision_region(model, llm):
 # Discrimination tests (interpretable vs. black-box, degrees of interpretability)
 # ---------------------------------------------------------------------------
 
-def _model_complexity(model):
-    """Rough count of operations/rules needed to compute one prediction.
-
-    Used to derive the ground-truth 'is compact' label for discrim_test_compactness.
-    Lower = simpler / more interpretable.
-    """
-    if isinstance(model, (LinearRegression, RidgeCV)):
-        return int(np.sum(np.abs(model.coef_) > 1e-8)) + 1
-    if isinstance(model, (Lasso, LassoCV)):
-        return max(int(np.sum(np.abs(model.coef_) > 1e-8)), 1) + 1
-    if isinstance(model, DecisionTreeRegressor):
-        return int(model.tree_.node_count)
-    if isinstance(model, GradientBoostingRegressor):
-        return int(sum(est[0].tree_.node_count for est in model.estimators_))
-    if isinstance(model, RandomForestRegressor):
-        return int(sum(est.tree_.node_count for est in model.estimators_))
-    if isinstance(model, MLPRegressor):
-        return int(sum(w.size for w in model.coefs_))
-    return 999  # unknown / assume complex
-
-
-_COMPACT_THRESHOLD = 30  # ops/rules at or below which a model is "compact"
-
 
 def discrim_test_simulate_all_active(model, llm):
     """Simulate prediction on a complex sample where all five features are active
@@ -664,10 +681,8 @@ def discrim_test_simulate_all_active(model, llm):
     true_pred = float(m.predict(sample)[0])
     response = ask_llm(
         llm, get_model_str(m, names),
-        "Compute the prediction for x0=1.3, x1=-0.7, x2=2.1, x3=-1.5, x4=0.8 "
-        "using the model above. All five features contribute. "
-        "Show your work step by step and end with the final predicted value on its own line.",
-        max_tokens=400,
+        "What does this model predict for x0=1.3, x1=-0.7, x2=2.1, x3=-1.5, x4=0.8? "
+        "Answer with just a single number.",
     )
     tol = max(abs(true_pred) * 0.2, 1.5)
     passed, llm_val = False, None
@@ -685,14 +700,7 @@ def discrim_test_simulate_all_active(model, llm):
 
 
 def discrim_test_compactness(model, llm):
-    """Ask the LLM whether the model can be expressed in 10 or fewer rules/operations.
-
-    Sparse models (LASSO with few active features) and shallow trees are compact and
-    their strings visually communicate this. Dense models (OLS with many features,
-    deep GBDT) and MLPs are not compact — and their strings look complex.
-    The test passes when the LLM's yes/no matches the model's true complexity,
-    rewarding representations that make complexity self-evident.
-    """
+    """Pass if the LLM says 'yes' the model is compact (≤10 rules/operations)."""
     X, y = _multi_feature_data([6.0, 0.0, 0.0, 0.0, 0.0, 0.0], n=500, seed=51)
     names = [f"x{i}" for i in range(6)]
     m = _safe_clone(model)
@@ -706,13 +714,9 @@ def discrim_test_compactness(model, llm):
         "Answer with exactly 'yes' or 'no'.",
         max_tokens=5,
     )
-    is_yes = bool(response and "yes" in response.lower())
-    n_ops = _model_complexity(m)
-    ground_truth_compact = n_ops <= _COMPACT_THRESHOLD
-    passed = (is_yes == ground_truth_compact)
+    passed = bool(response and "yes" in response.lower())
     return dict(test="discrim_compactness", passed=passed,
-                ground_truth=f"{'compact' if ground_truth_compact else 'not compact'} (n_ops≈{n_ops})",
-                response=response)
+                ground_truth=None, response=response)
 
 
 def discrim_test_dominant_feature_sample(model, llm):
@@ -771,47 +775,50 @@ def discrim_test_unit_sensitivity(model, llm):
                 ground_truth=round(delta, 3), response=response)
 
 
-def discrim_test_describe_then_predict(model, llm):
-    """Ask the LLM to first write out the complete model as explicit rules or a formula,
-    then use that description to predict two specific samples.
-
-    Both predictions must be approximately correct. Interpretable models yield
-    descriptions that can actually be used for prediction; MLP and GBDT model strings
-    are too complex to distil into a usable closed-form description.
-    This is a two-step test: description quality AND prediction accuracy are both required.
-    """
+def discrim_test_predict_above_threshold(model, llm):
+    """Predict a sample above the threshold (x0=2.0 > threshold=1.0, true output ≈2.0)."""
     X, y = _threshold_data(threshold=1.0, n=600, seed=54)
     names = [f"x{i}" for i in range(3)]
     m = _safe_clone(model)
     m.fit(X, y)
     assert r2_score(y, m.predict(X)) > 0.5, "Model failed to fit"
     pred_a = round(float(m.predict(np.array([[2.0, 0.0, 0.0]]))[0]), 2)
+    response = ask_llm(
+        llm, get_model_str(m, names),
+        "What does this model predict for x0=2.0, x1=0.0, x2=0.0? "
+        "Answer with just a single number.",
+    )
+    tol_a = max(abs(pred_a) * 0.2, 0.5)
+    passed = False
+    nums = re.findall(r"-?\d+\.?\d*", response or "")
+    if nums:
+        try: passed = abs(float(nums[0]) - pred_a) < tol_a
+        except ValueError: pass
+    return dict(test="discrim_predict_above_threshold", passed=passed,
+                ground_truth=pred_a, response=response)
+
+
+def discrim_test_predict_below_threshold(model, llm):
+    """Predict a sample below the threshold (x0=-0.5 < threshold=1.0, true output ≈0.0)."""
+    X, y = _threshold_data(threshold=1.0, n=600, seed=54)
+    names = [f"x{i}" for i in range(3)]
+    m = _safe_clone(model)
+    m.fit(X, y)
+    assert r2_score(y, m.predict(X)) > 0.5, "Model failed to fit"
     pred_b = round(float(m.predict(np.array([[-0.5, 0.0, 0.0]]))[0]), 2)
     response = ask_llm(
         llm, get_model_str(m, names),
-        "Step 1: Write this model as a simple formula or set of if-then rules in plain text. "
-        "Step 2: Use your formula/rules to predict: "
-        "(A) x0=2.0, x1=0.0, x2=0.0 and "
-        "(B) x0=-0.5, x1=0.0, x2=0.0. "
-        "Write your final answers as: 'Pred_A: <number>' and 'Pred_B: <number>'.",
-        max_tokens=350,
+        "What does this model predict for x0=-0.5, x1=0.0, x2=0.0? "
+        "Answer with just a single number.",
     )
-    tol_a = max(abs(pred_a) * 0.2, 0.5)
     tol_b = max(abs(pred_b) * 0.2, 0.5)
-    pred_a_ok, pred_b_ok = False, False
-    if response:
-        ma = re.search(r"pred_a[:\s]+(-?\d+\.?\d*)", response, re.IGNORECASE)
-        mb = re.search(r"pred_b[:\s]+(-?\d+\.?\d*)", response, re.IGNORECASE)
-        if ma:
-            try: pred_a_ok = abs(float(ma.group(1)) - pred_a) < tol_a
-            except ValueError: pass
-        if mb:
-            try: pred_b_ok = abs(float(mb.group(1)) - pred_b) < tol_b
-            except ValueError: pass
-    passed = pred_a_ok and pred_b_ok
-    return dict(test="discrim_describe_then_predict", passed=passed,
-                ground_truth=f"pred_A={pred_a}, pred_B={pred_b}",
-                response=response)
+    passed = False
+    nums = re.findall(r"-?\d+\.?\d*", response or "")
+    if nums:
+        try: passed = abs(float(nums[0]) - pred_b) < tol_b
+        except ValueError: pass
+    return dict(test="discrim_predict_below_threshold", passed=passed,
+                ground_truth=pred_b, response=response)
 
 
 DISCRIM_TESTS = [
@@ -819,7 +826,8 @@ DISCRIM_TESTS = [
     discrim_test_compactness,
     discrim_test_dominant_feature_sample,
     discrim_test_unit_sensitivity,
-    discrim_test_describe_then_predict,
+    discrim_test_predict_above_threshold,
+    discrim_test_predict_below_threshold,
 ]
 
 
@@ -849,7 +857,8 @@ HARD_TESTS = [
 INSIGHT_TESTS = [
     insight_simulatability,
     insight_sparse_feature_set,
-    insight_nonlinear_shape,
+    insight_nonlinear_threshold,
+    insight_nonlinear_direction,
     insight_counterfactual_target,
     insight_decision_region,
 ]

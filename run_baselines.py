@@ -112,6 +112,7 @@ def plot_interp_vs_tabarena(interp_results, tabarena_csv_path, out_path):
     model_names = list(dict.fromkeys(r["model"] for r in interp_results))
     n_passed = {n: sum(r["passed"] for r in interp_results if r["model"] == n)
                 for n in model_names}
+    n_tests = len([r for r in interp_results if r["model"] == model_names[0]])
 
     names  = [n for n in model_names if n in mean_rmse]
     x      = np.array([mean_rmse[n] for n in names])
@@ -132,7 +133,7 @@ def plot_interp_vs_tabarena(interp_results, tabarena_csv_path, out_path):
                 arrowprops=dict(arrowstyle="-", color="grey", lw=0.6))
 
     ax.set_xlabel("TabArena Mean RMSE", fontsize=10)
-    ax.set_ylabel("Interpretability Tests Passed (out of 18)", fontsize=10)
+    ax.set_ylabel(f"Interpretability Tests Passed (out of {n_tests})", fontsize=10)
     ax.set_title("Interpretability vs. TabArena Performance", fontsize=12, fontweight="bold")
     
     ax.grid(True, alpha=0.3)
