@@ -29,36 +29,32 @@ from performance import RESULTS_DIR, upsert_overall_results, evaluate_all_regres
 
 class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
-    CV-tuned Hierarchical Shrinkage DT (CV-HSDT):
-    Same algorithm as HSDT but the shrinkage_lambda is automatically selected
-    via 5-fold cross-validation during fit(), choosing from a predefined grid.
+    Joint CV-tuned Hierarchical Shrinkage DT (JCV-HSDT):
+    Jointly selects both max_leaf_nodes and shrinkage_lambda via 5-fold CV,
+    choosing from a 2D grid to find the best (regularized_depth, regularization) combo.
 
-    Shrinkage formula (top-down):
-      shrunk[node] = orig[node] + lam * (shrunk[parent] - orig[node]) / (n_samples + lam)
+    Candidate max_leaf_nodes: [15, 20, 25, 30]
+    Candidate lambda:         [1, 3, 7, 15, 30, 60, 120, 250]
 
-    Lambda grid: [1, 3, 7, 15, 30, 60] — chosen to cover a wide range of regularization.
-    The best lambda is selected by minimizing mean squared error on held-out folds.
-
+    The joint CV prevents underfitting (too few leaves) and overfitting (lambda too low).
     The tree structure and __str__ format are identical to HSDT, so interpretability
-    should be maintained while RMSE improves due to better-calibrated shrinkage.
+    is preserved while RMSE improves from optimal joint hyperparameter selection.
 
-    __str__ shows:
-      - Full tree with shrunk leaf values
-      - The selected lambda (for transparency)
-      - Feature importances with net directions
-      - Unused features
+    __str__ shows the CV-selected parameters explicitly (lambda and max_leaf_nodes).
     """
 
-    LAMBDA_GRID = [1.0, 3.0, 7.0, 15.0, 30.0, 60.0]
+    LEAF_GRID = [15, 20, 25, 30]
+    LAMBDA_GRID = [1.0, 3.0, 7.0, 15.0, 30.0, 60.0, 120.0, 250.0]
 
-    def __init__(self, max_leaf_nodes=25, min_samples_leaf=5, shrinkage_lambda="cv", cv=5):
+    def __init__(self, max_leaf_nodes="cv", shrinkage_lambda="cv",
+                 min_samples_leaf=5, cv=5):
         self.max_leaf_nodes = max_leaf_nodes
-        self.min_samples_leaf = min_samples_leaf
         self.shrinkage_lambda = shrinkage_lambda
+        self.min_samples_leaf = min_samples_leaf
         self.cv = cv
 
     @staticmethod
-    def _compute_shrinkage_for_tree(tree, lam):
+    def _compute_shrinkage(tree, lam):
         t = tree.tree_
         orig = t.value[:, 0, 0].copy()
         shrunk = np.copy(orig)
@@ -77,32 +73,34 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         shrink(0, orig[0])
         return shrunk
 
-    def _select_lambda(self, X_arr, y_arr):
-        """Select best lambda via cross-validation on training data."""
+    def _cv_select(self, X_arr, y_arr):
         kf = KFold(n_splits=self.cv, shuffle=True, random_state=42)
-        best_lam, best_mse = None, np.inf
+        splits = list(kf.split(X_arr))
+        best_leaves, best_lam, best_mse = 25, 15.0, np.inf
 
-        for lam in self.LAMBDA_GRID:
-            fold_mses = []
-            for train_idx, val_idx in kf.split(X_arr):
-                X_tr, X_va = X_arr[train_idx], X_arr[val_idx]
-                y_tr, y_va = y_arr[train_idx], y_arr[val_idx]
+        leaf_candidates = self.LEAF_GRID if self.max_leaf_nodes == "cv" else [int(self.max_leaf_nodes)]
+        lam_candidates = self.LAMBDA_GRID if self.shrinkage_lambda == "cv" else [float(self.shrinkage_lambda)]
 
-                tree = DecisionTreeRegressor(
-                    max_leaf_nodes=self.max_leaf_nodes,
-                    min_samples_leaf=self.min_samples_leaf,
-                    random_state=42,
-                )
-                tree.fit(X_tr, y_tr)
-                sv = self._compute_shrinkage_for_tree(tree, lam)
-                preds = sv[tree.apply(X_va)]
-                fold_mses.append(np.mean((y_va - preds) ** 2))
+        for n_leaves in leaf_candidates:
+            for lam in lam_candidates:
+                fold_mses = []
+                for train_idx, val_idx in splits:
+                    X_tr, X_va = X_arr[train_idx], X_arr[val_idx]
+                    y_tr, y_va = y_arr[train_idx], y_arr[val_idx]
+                    tree = DecisionTreeRegressor(
+                        max_leaf_nodes=n_leaves,
+                        min_samples_leaf=self.min_samples_leaf,
+                        random_state=42,
+                    )
+                    tree.fit(X_tr, y_tr)
+                    sv = self._compute_shrinkage(tree, lam)
+                    preds = sv[tree.apply(X_va)]
+                    fold_mses.append(np.mean((y_va - preds) ** 2))
+                mse = np.mean(fold_mses)
+                if mse < best_mse:
+                    best_mse, best_leaves, best_lam = mse, n_leaves, lam
 
-            mean_mse = np.mean(fold_mses)
-            if mean_mse < best_mse:
-                best_mse, best_lam = mean_mse, lam
-
-        return best_lam
+        return best_leaves, best_lam
 
     def fit(self, X, y):
         if hasattr(X, "columns"):
@@ -113,20 +111,15 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         X_arr = np.asarray(X, dtype=float)
         y_arr = np.asarray(y, dtype=float)
 
-        # Select lambda
-        if self.shrinkage_lambda == "cv":
-            self.lambda_ = self._select_lambda(X_arr, y_arr)
-        else:
-            self.lambda_ = float(self.shrinkage_lambda)
+        self.n_leaves_, self.lambda_ = self._cv_select(X_arr, y_arr)
 
-        # Fit final tree and apply shrinkage
         self.tree_ = DecisionTreeRegressor(
-            max_leaf_nodes=self.max_leaf_nodes,
+            max_leaf_nodes=self.n_leaves_,
             min_samples_leaf=self.min_samples_leaf,
             random_state=42,
         )
         self.tree_.fit(X_arr, y_arr)
-        self.shrunk_values_ = self._compute_shrinkage_for_tree(self.tree_, self.lambda_)
+        self.shrunk_values_ = self._compute_shrinkage(self.tree_, self.lambda_)
 
         return self
 
@@ -176,8 +169,7 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         importances = self.tree_.feature_importances_
 
         lines = [
-            f"CV_HSDT(max_leaf_nodes={self.max_leaf_nodes}, "
-            f"selected_lambda={self.lambda_:.1f}, cv={self.cv})",
+            f"JCV_HSDT(cv_selected: max_leaf_nodes={self.n_leaves_}, lambda={self.lambda_:.1f})",
             f"  nodes={t.node_count}, leaves={self.tree_.get_n_leaves()}",
             "",
             "Tree structure (follow from root; leaf values are shrunk predictions):",
