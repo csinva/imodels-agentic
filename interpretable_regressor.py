@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.linear_model import Ridge
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.utils.validation import check_is_fitted
 
@@ -28,23 +29,26 @@ from performance import RESULTS_DIR, upsert_overall_results, evaluate_all_regres
 
 class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
-    Greedy Additive Stumps (GAS): ensemble of depth-1 decision trees (stumps)
-    fitted greedily on residuals (gradient boosting with stumps).
+    Piecewise Linear Tree (PLT): shallow decision tree routing with Ridge regression at leaves.
 
-    Prediction: y_hat = base_value + sum_i(learning_rate * stump_i.predict(X))
+    Algorithm:
+    1. Fit a shallow DT (max_leaf_nodes) to partition the feature space into regions.
+    2. For each leaf region, fit a Ridge linear regression on the samples there.
+    3. Predict: route sample to its leaf via the DT, then apply the leaf's linear model.
 
-    The __str__ shows:
-      - All rules as simple if/else conditions with their contributions,
-        sorted by |left_contribution - right_contribution| (impact magnitude)
-      - Aggregated feature importances across all stumps
-      - Net direction of effect per feature (higher value → higher/lower prediction)
-      - Unused features
+    Better RMSE than constant-leaf DT because linear models fit within-region trends.
+    Same interpretability: follow the tree path (Step 1), then apply the leaf formula (Step 2).
+
+    __str__ shows:
+      - Step 1: Routing tree in if/else form (leads to a LEAF number)
+      - Step 2: Linear formula for each leaf
+      - Feature importances combining routing splits + leaf model coefficients
     """
 
-    def __init__(self, n_stumps=25, learning_rate=0.4, min_samples_leaf=10):
-        self.n_stumps = n_stumps
-        self.learning_rate = learning_rate
+    def __init__(self, max_leaf_nodes=8, min_samples_leaf=20, leaf_alpha=1.0):
+        self.max_leaf_nodes = max_leaf_nodes
         self.min_samples_leaf = min_samples_leaf
+        self.leaf_alpha = leaf_alpha
 
     def fit(self, X, y):
         if hasattr(X, "columns"):
@@ -55,113 +59,106 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         X_arr = np.asarray(X, dtype=float)
         y_arr = np.asarray(y, dtype=float)
 
-        self.base_value_ = float(np.mean(y_arr))
-        residual = y_arr - self.base_value_
+        # Step 1: fit routing tree
+        self.routing_tree_ = DecisionTreeRegressor(
+            max_leaf_nodes=self.max_leaf_nodes,
+            min_samples_leaf=self.min_samples_leaf,
+            random_state=42,
+        )
+        self.routing_tree_.fit(X_arr, y_arr)
 
-        self.stumps_ = []
-        for _ in range(self.n_stumps):
-            stump = DecisionTreeRegressor(
-                max_depth=1,
-                min_samples_leaf=self.min_samples_leaf,
-                random_state=42,
-            )
-            stump.fit(X_arr, residual)
-            pred = stump.predict(X_arr)
-            residual -= self.learning_rate * pred
-            self.stumps_.append(stump)
+        # Step 2: get leaf assignments and fit per-leaf Ridge models
+        leaf_node_ids = self.routing_tree_.apply(X_arr)
+        unique_nodes = np.unique(leaf_node_ids)
+
+        # Map sklearn internal node index → readable leaf number (1, 2, 3, ...)
+        self.node_to_leaf_ = {int(n): i + 1 for i, n in enumerate(unique_nodes)}
+        self.leaf_to_node_ = {v: k for k, v in self.node_to_leaf_.items()}
+
+        self.leaf_models_: dict = {}
+        for leaf_num, node_idx in self.leaf_to_node_.items():
+            mask = leaf_node_ids == node_idx
+            X_leaf, y_leaf = X_arr[mask], y_arr[mask]
+            model = Ridge(alpha=self.leaf_alpha)
+            model.fit(X_leaf, y_leaf)
+            self.leaf_models_[leaf_num] = model
 
         return self
 
     def predict(self, X):
-        check_is_fitted(self, "stumps_")
+        check_is_fitted(self, "routing_tree_")
         X_arr = np.asarray(X, dtype=float)
-        pred = np.full(X_arr.shape[0], self.base_value_)
-        for stump in self.stumps_:
-            pred += self.learning_rate * stump.predict(X_arr)
-        return pred
+        node_ids = self.routing_tree_.apply(X_arr)
+        preds = np.empty(len(X_arr))
+        for leaf_num, model in self.leaf_models_.items():
+            node_idx = self.leaf_to_node_[leaf_num]
+            mask = node_ids == node_idx
+            if np.any(mask):
+                preds[mask] = model.predict(X_arr[mask])
+        return preds
 
-    def _stump_info(self, stump):
-        """Extract feature, threshold, and scaled leaf values from a depth-1 tree."""
-        t = stump.tree_
-        feature_idx = int(t.feature[0])
-        threshold = float(t.threshold[0])
-        left_val = float(t.value[t.children_left[0]][0][0]) * self.learning_rate
-        right_val = float(t.value[t.children_right[0]][0][0]) * self.learning_rate
-        impact = abs(right_val - left_val)
-        return {
-            "feature_idx": feature_idx,
-            "feature_name": self.feature_names_in_[feature_idx],
-            "threshold": threshold,
-            "left_val": left_val,
-            "right_val": right_val,
-            "impact": impact,
-        }
+    def _tree_lines(self, node=0, depth=0):
+        """Recursively build routing tree string as if/else lines."""
+        t = self.routing_tree_.tree_
+        names = self.feature_names_in_
+        indent = "    " * depth
+
+        if t.children_left[node] == -1:  # leaf node
+            leaf_num = self.node_to_leaf_[int(node)]
+            return [f"{indent}→ [LEAF {leaf_num}]"]
+
+        fname = names[int(t.feature[node])]
+        thresh = t.threshold[node]
+        lines = [f"{indent}if {fname} <= {thresh:.4g}:"]
+        lines.extend(self._tree_lines(int(t.children_left[node]), depth + 1))
+        lines.append(f"{indent}else:  # {fname} > {thresh:.4g}")
+        lines.extend(self._tree_lines(int(t.children_right[node]), depth + 1))
+        return lines
 
     def __str__(self):
-        check_is_fitted(self, "stumps_")
-
-        infos = [self._stump_info(s) for s in self.stumps_]
-        infos_sorted = sorted(infos, key=lambda x: x["impact"], reverse=True)
+        check_is_fitted(self, "routing_tree_")
+        names = self.feature_names_in_
 
         lines = [
-            f"GreedyAdditiveStumps(n_stumps={self.n_stumps}, "
-            f"learning_rate={self.learning_rate}, "
-            f"min_samples_leaf={self.min_samples_leaf})",
-            f"  base_value = {self.base_value_:.4f}  "
-            f"(prediction = base_value + sum of contributions below)",
+            f"PiecewiseLinearTree(max_leaf_nodes={self.max_leaf_nodes}, "
+            f"min_samples_leaf={self.min_samples_leaf}, leaf_alpha={self.leaf_alpha})",
             "",
-            "Rules (each is an independent if/else; apply ALL rules and sum contributions):",
+            "Step 1 — Follow routing tree from top to reach your LEAF number:",
         ]
+        lines.extend(self._tree_lines())
 
-        for i, info in enumerate(infos_sorted):
-            fname = info["feature_name"]
-            thresh = info["threshold"]
-            lv = info["left_val"]
-            rv = info["right_val"]
-            lines.append(
-                f"  Rule {i+1:2d}: if {fname} <= {thresh:.4g}: "
-                f"contribution={lv:+.4f}  |  else: contribution={rv:+.4f}"
-            )
+        lines += [
+            "",
+            "Step 2 — Apply the linear formula for your LEAF number to get the prediction:",
+        ]
+        for leaf_num in sorted(self.leaf_models_.keys()):
+            model = self.leaf_models_[leaf_num]
+            intercept = float(model.intercept_)
+            terms = [f"{intercept:+.4f}"]
+            for c, name in zip(model.coef_, names):
+                if abs(c) > 1e-3:
+                    terms.append(f"({c:+.4f} * {name})")
+            formula = "y = " + " ".join(terms)
+            lines.append(f"  LEAF {leaf_num}: {formula}")
 
-        lines.append("")
+        # Feature importances: routing splits + aggregate leaf coefficients
+        routing_imp = self.routing_tree_.feature_importances_
+        leaf_coef_imp = np.zeros(len(names))
+        for model in self.leaf_models_.values():
+            leaf_coef_imp += np.abs(model.coef_)
+        total_route = routing_imp.sum() or 1.0
+        total_leaf = leaf_coef_imp.sum() or 1.0
+        combined_imp = routing_imp / total_route + leaf_coef_imp / total_leaf
 
-        # Aggregated feature importances
-        feat_imp: dict = {}
-        feat_direction: dict = {}  # weighted sum: right_val - left_val, weighted by impact
-        for info in infos:
-            fname = info["feature_name"]
-            feat_imp[fname] = feat_imp.get(fname, 0.0) + info["impact"]
-            feat_direction[fname] = (
-                feat_direction.get(fname, 0.0)
-                + (info["right_val"] - info["left_val"]) * info["impact"]
-            )
+        order = np.argsort(combined_imp)[::-1]
+        lines += ["", "Feature importances (routing importance + leaf coefficient magnitude):"]
+        for rank, fi in enumerate(order):
+            if combined_imp[fi] > 0.01:
+                lines.append(f"  {rank+1:2d}. {names[fi]:<25s}  {combined_imp[fi]:.4f}")
 
-        total_imp = sum(feat_imp.values()) or 1.0
-        feat_imp_sorted = sorted(feat_imp.items(), key=lambda x: x[1], reverse=True)
-
-        lines.append(
-            "Feature importances (sum of |contribution gap| across rules; higher = more important):"
-        )
-        for fname, imp in feat_imp_sorted:
-            if imp > 1e-9:
-                d = feat_direction[fname]
-                if d > 0:
-                    direction = "positive (higher value → higher prediction)"
-                elif d < 0:
-                    direction = "negative (higher value → lower prediction)"
-                else:
-                    direction = "mixed"
-                lines.append(
-                    f"  {fname:<25s}  importance={imp/total_imp:.4f}  "
-                    f"net direction: {direction}"
-                )
-
-        used = set(feat_imp.keys())
-        unused = [f for f in self.feature_names_in_ if f not in used]
+        unused = [names[i] for i in range(len(names)) if combined_imp[i] <= 0.01]
         if unused:
-            lines.append(
-                f"\nFeatures not used (zero importance): {', '.join(unused)}"
-            )
+            lines.append(f"\nFeatures with near-zero importance: {', '.join(unused)}")
 
         return "\n".join(lines)
 
