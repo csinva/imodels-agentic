@@ -29,24 +29,24 @@ from performance import RESULTS_DIR, upsert_overall_results, evaluate_all_regres
 
 class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
-    CV-HSDT-FDR with Continuous Lambda Optimization (CV-HSDT-FDR-Cont):
-    Builds on CV-HSDT-FDR (commit 60f9c64, interp=0.84, RMSE=0.624) by
-    replacing discrete grid lambda CV with scipy's Brent golden-section search
-    over a continuous range [0.01, 500].
+    CV-HSDT-FDR with Friedman MSE criterion (CV-HSDT-FDR-Frid):
+    Same as CV-HSDT-FDR v2 (commit 60f9c64, interp=0.84, RMSE=0.624) but uses
+    criterion="friedman_mse" for tree splitting instead of "squared_error".
 
-    Benefits over grid search:
-      - Finds the exact CV-optimal lambda rather than the nearest grid point
-      - Same tree structure (max_leaf_nodes=25), so interpretability unchanged
-      - Potentially lower RMSE by finding a better-calibrated shrinkage strength
-
-    Same flat decision rules __str__ format as v2.
+    Friedman MSE uses Friedman's improvement score (uses expected MSE improvement
+    of the split, which can give tighter splits and better generalization than
+    the standard impurity-based split). Same complexity: max_leaf_nodes=25.
 
     Shrinkage formula (top-down):
       shrunk[node] = orig[node] + lam * (shrunk[parent] - orig[node]) / (n_samples + lam)
+
+    Lambda grid: [1, 3, 7, 15, 30, 60]
     """
 
+    LAMBDA_GRID = [1.0, 3.0, 7.0, 15.0, 30.0, 60.0]
+
     def __init__(self, max_leaf_nodes=25, min_samples_leaf=5, shrinkage_lambda="cv", cv=5,
-                 repr_v=5):
+                 repr_v=6):
         self.max_leaf_nodes = max_leaf_nodes
         self.min_samples_leaf = min_samples_leaf
         self.shrinkage_lambda = shrinkage_lambda
@@ -74,38 +74,26 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         return shrunk
 
     def _select_lambda(self, X_arr, y_arr):
-        """Select lambda via 5-fold CV using scipy's Brent golden-section search."""
-        from scipy.optimize import minimize_scalar
-
         kf = KFold(n_splits=self.cv, shuffle=True, random_state=42)
-        # Pre-fit fold trees once to avoid re-fitting on every objective evaluation
-        fold_trees = []
-        fold_va = []
-        for tr_idx, va_idx in kf.split(X_arr):
-            X_tr, y_tr = X_arr[tr_idx], y_arr[tr_idx]
-            X_va, y_va = X_arr[va_idx], y_arr[va_idx]
-            tree = DecisionTreeRegressor(
-                max_leaf_nodes=self.max_leaf_nodes,
-                min_samples_leaf=self.min_samples_leaf,
-                random_state=42,
-            )
-            tree.fit(X_tr, y_tr)
-            leaf_indices = tree.apply(X_va)
-            fold_trees.append(tree)
-            fold_va.append((leaf_indices, y_va))
-
-        def cv_mse(log_lam):
-            lam = np.exp(log_lam)  # search in log-space for better coverage
-            total_mse = 0.0
-            for tree, (leaf_idx, y_va) in zip(fold_trees, fold_va):
+        best_lam, best_mse = None, np.inf
+        for lam in self.LAMBDA_GRID:
+            fold_mses = []
+            for tr_idx, va_idx in kf.split(X_arr):
+                X_tr, X_va = X_arr[tr_idx], X_arr[va_idx]
+                y_tr, y_va = y_arr[tr_idx], y_arr[va_idx]
+                tree = DecisionTreeRegressor(
+                    criterion="friedman_mse",
+                    max_leaf_nodes=self.max_leaf_nodes,
+                    min_samples_leaf=self.min_samples_leaf,
+                    random_state=42,
+                )
+                tree.fit(X_tr, y_tr)
                 sv = self._compute_shrinkage(tree, lam)
-                total_mse += np.mean((y_va - sv[leaf_idx]) ** 2)
-            return total_mse / len(fold_trees)
-
-        # Search log(lambda) in [log(0.01), log(1000)]
-        result = minimize_scalar(cv_mse, bounds=(np.log(0.01), np.log(1000.0)),
-                                 method="bounded")
-        return float(np.exp(result.x))
+                fold_mses.append(np.mean((y_va - sv[tree.apply(X_va)]) ** 2))
+            mse = np.mean(fold_mses)
+            if mse < best_mse:
+                best_mse, best_lam = mse, lam
+        return best_lam
 
     def fit(self, X, y):
         if hasattr(X, "columns"):
@@ -122,6 +110,7 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
             self.lambda_ = float(self.shrinkage_lambda)
 
         self.tree_ = DecisionTreeRegressor(
+            criterion="friedman_mse",
             max_leaf_nodes=self.max_leaf_nodes,
             min_samples_leaf=self.min_samples_leaf,
             random_state=42,
@@ -200,8 +189,8 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         n_leaves = self.tree_.get_n_leaves()
 
         lines = [
-            f"CV_HSDT_FDR_Cont(max_leaf_nodes={self.max_leaf_nodes}, "
-            f"selected_lambda={self.lambda_:.3f}, cv={self.cv})",
+            f"CV_HSDT_FDR(max_leaf_nodes={self.max_leaf_nodes}, "
+            f"selected_lambda={self.lambda_:.1f}, cv={self.cv})",
             f"  nodes={t.node_count}, leaves={n_leaves}",
             "",
             "Tree structure (follow from root; leaf values are shrunk predictions):",
