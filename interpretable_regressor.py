@@ -33,9 +33,9 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
     Interpretable scikit-learn compatible regressor.
 
-    This is the baseline: a shallow decision tree.
+    This is just a baseline implementation of a shallow decision tree.
     The agent may modify this class freely — algorithm, structure, hyperparameters, etc.
-    Must implement: fit(X, y), predict(X).
+    Must implement: fit(X, y), predict(X), and __str__().
     """
 
     def __init__(self, max_depth=MAX_DEPTH, min_samples_leaf=MIN_SAMPLES_LEAF):
@@ -65,9 +65,14 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
             f"  nodes={n_nodes}, leaves={n_leaves}"
         )
 
+# Make class picklable when script is run as __main__ (required for joblib caching/parallel)
+import sys as _sys
+_sys.modules.setdefault("interpretable_regressor", _sys.modules[__name__])
+InterpretableRegressor.__module__ = "interpretable_regressor"
+
 
 # ---------------------------------------------------------------------------
-# Evaluation
+# Evaluation (do not edit anything below this line)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":

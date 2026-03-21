@@ -4,18 +4,17 @@ This is an experiment to have the LLM autonomously research scikit-learn regress
 
 ## Setup
 
-To set up a new experiment, work with the user to:
+To set up a new experiment, do the following:
 
-1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar20`). The branch `autoresearch/<tag>` must not already exist — this is a fresh run.
+1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar21`). The branch `autoresearch/<tag>` must not already exist — this is a fresh run.
 2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current master.
 3. **Read the in-scope files**: The repo is small. Read these files for full context:
    - `readme.md` — repository context.
    - `run_baselines.py` — the fixed baseline evaluation harness. This is NOT modified by the agent and has already been run for you.
    - `interpretable_regressor.py` — the file you modify. Regressor definition and evaluation loop.
-   - `results/overall_results.csv` — current scores for all models including baselines.
-4. **Confirm and go**: Confirm setup looks good.
+   - `results/overall_results.csv` — current scores for all baselines models have already been run for you.
 
-Once you get confirmation, kick off the experimentation.
+Then kick off the experimentation.
 
 ## Experimentation
 
@@ -28,8 +27,6 @@ This trains `InterpretableRegressor`, runs interpretability tests, and updates `
   - The `InterpretableRegressor` class definition (algorithm, structure, hyperparameters)
   - Switching to another model type (rule lists, linear models, GAMs, sparse models, etc.)
   - Feature engineering or preprocessing inside the regressor
-  - Hyperparameter values
-  - The training loop structure
 
 **What you CANNOT do:**
 - Modify `run_baselines.py`. It is read-only.
@@ -94,8 +91,8 @@ LOOP FOREVER:
 **NEVER STOP**: Once the experiment loop has begun, do NOT pause to ask the human if you should continue. Run until manually stopped.
 
 **Ideas to try** (not exhaustive — be creative):
-- Try novel splitting criteria
 - Try novel ways to induce sparsity or perform elaborate feature selection
 - Try new regularization techniques
+- Try novel splitting criteria
 
 Do not simply import a known interpretable model and change its hyperparameters — build your own from scratch using basic building blocks or substantially modify an existing one. The goal is to discover new models, not just find the best hyperparameters for known models.
