@@ -74,7 +74,7 @@ commit	mean_rmse	frac_interpretability_tests_passed	status	description
 
 ## The experiment loop
 
-The experiment runs on a dedicated branch (e.g. `autoresearch/mar20`).
+The experiment runs on a dedicated branch (e.g. `autoresearch/mar21`).
 
 LOOP FOREVER:
 
@@ -85,8 +85,7 @@ LOOP FOREVER:
 5. Read results: `tail -n 5 run.log` and `grep InterpretableRegressor results/overall_results.csv`
 6. If the run crashed, check `tail -n 50 run.log` for the stack trace and attempt a fix
 7. Record results in `results/overall_results.csv` (do not commit this file)
-8. If either metric improved without the other getting significantly worse, keep the commit and save the current version of `interpretable_regressor.py` as a new file (e.g. `interpretable_regressor_<commit_hash>.py`) for future use. Then `git checkout master` and merge the commit from the experiment branch with a descriptive message about the improvement.
-9. Otherwise, `git reset --hard` back to the previous commit
+8. If either metric improved without the other getting significantly worse, keep the commit and save the current version of `interpretable_regressor.py` as a new file under the success folder (e.g. `interpretable_regressors_lib/success/interpretable_regressor_<commit_hash>_<simple_name>.py`) for future use. Otherwise save it under the failure folder (e.g. `interpretable_regressors_lib/failure/interpretable_regressor_<commit_hash>_<simple_name>.py`). If it was a success, then run `git checkout master` and merge the commit from the experiment branch with a descriptive message about the improvement.
 
 **NEVER STOP**: Once the experiment loop has begun, do NOT pause to ask the human if you should continue. Run until manually stopped.
 
