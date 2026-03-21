@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.linear_model import RidgeCV
 from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.utils.validation import check_is_fitted
@@ -29,72 +30,50 @@ from performance import RESULTS_DIR, upsert_overall_results, evaluate_all_regres
 
 class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
-    CV-HSDT-FDR with max_leaf_nodes=28 (CV-HSDT-FDR-28):
-    Incremental improvement over v2 (commit 60f9c64: max_leaf_nodes=25, interp=0.84, RMSE=0.624).
-    Increases max_leaf_nodes from 25 to 28 for marginally better RMSE capacity.
+    DT with Ridge-Regularized Leaf Values and Flat Decision Rules (Ridge-DT-FDR):
+    Builds on CV-HSDT-FDR v2 (commit 60f9c64, interp=0.84, RMSE=0.624) by replacing
+    hierarchical shrinkage with globally-optimal ridge regression on leaf indicators.
 
-    Hypothesis: 28 leaves is within the LLM's ability to scan (similar to 25),
-    so interpretability should stay at 0.84. RMSE may improve slightly over 25 leaves
-    while staying better than 35 leaves (which caused simulatability failure).
+    Algorithm:
+      1. Fit a DT (max_leaf_nodes=25) to get tree STRUCTURE (splits).
+      2. Build a leaf indicator matrix X_leaf [n_samples x n_leaves].
+      3. Fit RidgeCV on X_leaf to find the optimal alpha that minimizes CV-MSE.
+      4. Leaf values = ridge.coef_ + ridge.intercept_ / n_leaves.
 
-    repr_v=8 to bust joblib cache.
+    This replaces the greedy top-down hierarchical shrinkage with a globally-optimal
+    L2-regularized solution. Ridge shrinks all leaf values toward the global mean
+    (unlike HSDT which shrinks toward the tree ancestry). The CV-optimal alpha
+    is equivalent to an optimal shrinkage intensity.
 
-    Shrinkage formula (top-down):
-      shrunk[node] = orig[node] + lam * (shrunk[parent] - orig[node]) / (n_samples + lam)
-
-    Lambda grid: [1, 3, 7, 15, 30, 60]
+    Same flat decision rules __str__ format (repr_v=9, cache bust).
     """
 
-    LAMBDA_GRID = [1.0, 3.0, 7.0, 15.0, 30.0, 60.0]
+    RIDGE_ALPHAS = [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0, 10000.0]
 
-    def __init__(self, max_leaf_nodes=28, min_samples_leaf=5, shrinkage_lambda="cv", cv=5,
-                 repr_v=8):
+    def __init__(self, max_leaf_nodes=25, min_samples_leaf=5, cv=5, repr_v=9):
         self.max_leaf_nodes = max_leaf_nodes
         self.min_samples_leaf = min_samples_leaf
-        self.shrinkage_lambda = shrinkage_lambda
         self.cv = cv
         self.repr_v = repr_v  # version tag — increment to bust joblib cache on __str__ changes
 
     @staticmethod
-    def _compute_shrinkage(tree, lam):
+    def _leaf_indicator_matrix(tree, X_arr):
+        """Build [n_samples x n_leaves] indicator matrix. Returns (X_ind, node_to_col)."""
         t = tree.tree_
-        orig = t.value[:, 0, 0].copy()
-        shrunk = np.copy(orig)
-
-        def shrink(node, parent_shrunk):
-            if node == 0:
-                shrunk[node] = orig[node]
-            else:
-                n_s = t.n_node_samples[node]
-                shrunk[node] = orig[node] + lam * (parent_shrunk - orig[node]) / (n_s + lam)
-            left = t.children_left[node]
-            if left != -1:
-                shrink(int(left), shrunk[node])
-                shrink(int(t.children_right[node]), shrunk[node])
-
-        shrink(0, orig[0])
-        return shrunk
-
-    def _select_lambda(self, X_arr, y_arr):
-        kf = KFold(n_splits=self.cv, shuffle=True, random_state=42)
-        best_lam, best_mse = None, np.inf
-        for lam in self.LAMBDA_GRID:
-            fold_mses = []
-            for tr_idx, va_idx in kf.split(X_arr):
-                X_tr, X_va = X_arr[tr_idx], X_arr[va_idx]
-                y_tr, y_va = y_arr[tr_idx], y_arr[va_idx]
-                tree = DecisionTreeRegressor(
-                    max_leaf_nodes=self.max_leaf_nodes,
-                    min_samples_leaf=self.min_samples_leaf,
-                    random_state=42,
-                )
-                tree.fit(X_tr, y_tr)
-                sv = self._compute_shrinkage(tree, lam)
-                fold_mses.append(np.mean((y_va - sv[tree.apply(X_va)]) ** 2))
-            mse = np.mean(fold_mses)
-            if mse < best_mse:
-                best_mse, best_lam = mse, lam
-        return best_lam
+        n_nodes = t.node_count
+        # Map leaf node IDs to contiguous column indices
+        node_to_col = {}
+        col = 0
+        for node in range(n_nodes):
+            if t.children_left[node] == -1:  # leaf
+                node_to_col[node] = col
+                col += 1
+        n_leaves = col
+        leaf_idx = tree.apply(X_arr)
+        X_ind = np.zeros((len(X_arr), n_leaves))
+        for i, node in enumerate(leaf_idx):
+            X_ind[i, node_to_col[node]] = 1.0
+        return X_ind, node_to_col
 
     def fit(self, X, y):
         if hasattr(X, "columns"):
@@ -105,18 +84,30 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         X_arr = np.asarray(X, dtype=float)
         y_arr = np.asarray(y, dtype=float)
 
-        if self.shrinkage_lambda == "cv":
-            self.lambda_ = self._select_lambda(X_arr, y_arr)
-        else:
-            self.lambda_ = float(self.shrinkage_lambda)
-
+        # Step 1: Fit DT structure
         self.tree_ = DecisionTreeRegressor(
             max_leaf_nodes=self.max_leaf_nodes,
             min_samples_leaf=self.min_samples_leaf,
             random_state=42,
         )
         self.tree_.fit(X_arr, y_arr)
-        self.shrunk_values_ = self._compute_shrinkage(self.tree_, self.lambda_)
+
+        # Step 2: Build leaf indicator matrix
+        X_ind, self.node_to_col_ = self._leaf_indicator_matrix(self.tree_, X_arr)
+
+        # Step 3: Ridge regression on leaf indicators (CV over alpha)
+        self.ridge_ = RidgeCV(alphas=self.RIDGE_ALPHAS, fit_intercept=True,
+                              cv=self.cv)
+        self.ridge_.fit(X_ind, y_arr)
+        self.alpha_ = float(self.ridge_.alpha_)
+
+        # Step 4: Compute shrunk_values_ for all nodes (leaves get ridge values)
+        n_nodes = self.tree_.tree_.node_count
+        # Initialize with original tree values
+        self.shrunk_values_ = self.tree_.tree_.value[:, 0, 0].copy()
+        # Overwrite leaf values with ridge predictions
+        for node, col in self.node_to_col_.items():
+            self.shrunk_values_[node] = self.ridge_.coef_[col] + self.ridge_.intercept_
 
         return self
 
@@ -189,8 +180,8 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         n_leaves = self.tree_.get_n_leaves()
 
         lines = [
-            f"CV_HSDT_FDR(max_leaf_nodes={self.max_leaf_nodes}, "
-            f"selected_lambda={self.lambda_:.1f}, cv={self.cv})",
+            f"Ridge_DT_FDR(max_leaf_nodes={self.max_leaf_nodes}, "
+            f"ridge_alpha={self.alpha_:.2g}, cv={self.cv})",
             f"  nodes={t.node_count}, leaves={n_leaves}",
             "",
             "Tree structure (follow from root; leaf values are shrunk predictions):",
