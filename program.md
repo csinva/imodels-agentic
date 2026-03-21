@@ -11,7 +11,7 @@ To set up a new experiment, work with the user to:
 3. **Read the in-scope files**: The repo is small. Read these files for full context:
    - `readme.md` — repository context.
    - `run_baselines.py` — the fixed baseline evaluation harness. This is NOT modified by the agent and has already been run for you.
-   - `model.py` — the file you modify. Regressor definition and evaluation loop.
+   - `interpretable_regressor.py` — the file you modify. Regressor definition and evaluation loop.
    - `results/overall_results.csv` — current scores for all models including baselines.
 4. **Confirm and go**: Confirm setup looks good.
 
@@ -19,12 +19,12 @@ Once you get confirmation, kick off the experimentation.
 
 ## Experimentation
 
-Run an experiment with: `uv run model.py`
+Run an experiment with: `uv run interpretable_regressor.py`
 
 This trains `InterpretableRegressor`, runs interpretability tests, and updates `results/overall_results.csv`.
 
 **What you CAN do:**
-- Modify `model.py` — this is the only file you edit. Everything is fair game:
+- Modify `interpretable_regressor.py` — this is the only file you edit. Everything is fair game:
   - The `InterpretableRegressor` class definition (algorithm, structure, hyperparameters)
   - Switching to another model type (rule lists, linear models, GAMs, sparse models, etc.)
   - Feature engineering or preprocessing inside the regressor
@@ -70,7 +70,7 @@ commit	mean_rmse	frac_interpretability_tests_passed	status	description
 ```
 
 1. git commit hash (short, 7 chars)
-2. mean_rmse achieved — use empty for crashes (note: model.py does not compute mean_rmse; check overall_results.csv for the baseline value to compare against)
+2. mean_rmse achieved — use empty for crashes (note: interpretable_regressor.py does not compute mean_rmse; check overall_results.csv for the baseline value to compare against)
 3. frac_interpretability_tests_passed — from the script output
 4. status: `keep`, `discard`, or `crash`
 5. short text description of what this experiment tried - make sure to update this clearly
@@ -82,9 +82,9 @@ The experiment runs on a dedicated branch (e.g. `autoresearch/mar20`).
 LOOP FOREVER:
 
 1. Look at the git state: the current branch/commit we're on
-2. Edit `model.py` with an experimental idea
+2. Edit `interpretable_regressor.py` with an experimental idea
 3. git commit
-4. Run the experiment: `uv run model.py > run.log 2>&1`
+4. Run the experiment: `uv run interpretable_regressor.py > run.log 2>&1`
 5. Read results: `tail -n 5 run.log` and `grep InterpretableRegressor results/overall_results.csv`
 6. If the run crashed, check `tail -n 50 run.log` for the stack trace and attempt a fix
 7. Record results in `results/overall_results.csv` (do not commit this file)
@@ -97,3 +97,5 @@ LOOP FOREVER:
 - Try novel splitting criteria
 - Try novel ways to induce sparsity or perform elaborate feature selection
 - Try new regularization techniques
+
+Do not simply import a known interpretable model and change its hyperparameters — build your own from scratch using basic building blocks or substantially modify an existing one. The goal is to discover new models, not just find the best hyperparameters for known models.
