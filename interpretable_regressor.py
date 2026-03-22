@@ -30,34 +30,38 @@ from performance import RESULTS_DIR, upsert_overall_results, evaluate_all_regres
 
 class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
-    CV-HSDT-Lasso: 35-leaf HSDT tree + sparse LassoCV correction on residuals.
+    Lasso-HSDT: Global LassoCV model first, then 35-leaf HSDT tree on residuals.
 
-    Two-stage model:
-    Stage 1: Fit a 35-leaf tree with hierarchical shrinkage (HSDT). 8-seed joint CV
-             with KFold(random_state=43) selects best (seed, lambda).
-    Stage 2: Fit LassoCV on the training residuals (y - tree_pred) using original
-             features. This captures linear trends the tree misses AND allows
-             extrapolation beyond the training range.
+    Two-stage model (order matters for interpretability!):
+    Stage 1: Fit LassoCV on training data. This captures global linear trends and
+             EXTRAPOLATES linearly beyond the training range. The linear representation
+             is easy for an LLM to compute and understand.
+    Stage 2: Fit a 35-leaf HSDT tree on the Lasso residuals (y - lasso_pred).
+             This captures nonlinear structure that Lasso misses. The tree corrects
+             for residual nonlinear patterns. Tree residuals are smaller and the
+             representation is interpreted as an additive correction.
 
-    Final prediction: tree_shrunk_pred + lasso_correction
+    Final prediction: lasso_pred + tree_residual_pred
 
-    HYPOTHESIS: Trees are piecewise constant and cannot extrapolate beyond training
-    range. A sparse Lasso correction on residuals (a) captures systematic linear
-    patterns the tree misses, improving RMSE; and (b) allows linear extrapolation,
-    helping with counterfactual tests that require out-of-range predictions.
+    HYPOTHESIS: Lasso-first gives better interpretability than tree-first:
+    - For tests on linear synthetic data: Lasso ≈ correct, tree correction ≈ 0 → LLM gets
+      accurate predictions just from the linear formula (easy computation)
+    - For counterfactual tests: Lasso extrapolates → can reach targets outside training range
+    - For sparse feature tests: Lasso selects relevant features → sparse representation
+    RMSE: Lasso+tree combination should match or beat tree+Lasso (exp59's 0.607).
 
     Shrinkage formula (top-down):
       shrunk[node] = orig[node] + lam * (shrunk[parent] - orig[node]) / (n_samples + lam)
 
     Seeds: [0,1,2,3,4,5,6,42]. Lambda grid: [1,2,4,7,10,15,22,30,45,60]. cv=5.
-    repr_v=45 to bust joblib cache.
+    repr_v=46 to bust joblib cache.
     """
 
     LAMBDA_GRID = [1.0, 2.0, 4.0, 7.0, 10.0, 15.0, 22.0, 30.0, 45.0, 60.0]
     SEED_GRID = [0, 1, 2, 3, 4, 5, 6, 42]
 
     def __init__(self, max_leaf_nodes=35, min_samples_leaf=5, shrinkage_lambda="cv", cv=5,
-                 repr_v=45):
+                 repr_v=46):
         self.max_leaf_nodes = max_leaf_nodes
         self.min_samples_leaf = min_samples_leaf
         self.shrinkage_lambda = shrinkage_lambda
@@ -85,7 +89,7 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         return shrunk
 
     def _select_seed_and_lambda(self, X_arr, y_arr):
-        """Select best (seed, lambda) combination via CV."""
+        """Select best (seed, lambda) combination via CV on residuals."""
         kf = KFold(n_splits=self.cv, shuffle=True, random_state=43)
         best_seed, best_lam, best_mse = 42, self.LAMBDA_GRID[0], np.inf
         for seed in self.SEED_GRID:
@@ -116,8 +120,18 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         X_arr = np.asarray(X, dtype=float)
         y_arr = np.asarray(y, dtype=float)
 
+        # Stage 1: Fit LassoCV on original data
+        lasso = LassoCV(cv=5, random_state=42, max_iter=10000)
+        lasso.fit(X_arr, y_arr)
+        self.lasso_ = lasso
+
+        # Compute Lasso residuals for Stage 2
+        lasso_preds = lasso.predict(X_arr)
+        residuals = y_arr - lasso_preds
+
+        # Stage 2: Fit HSDT tree on Lasso residuals
         if self.shrinkage_lambda == "cv":
-            self.seed_, self.lambda_ = self._select_seed_and_lambda(X_arr, y_arr)
+            self.seed_, self.lambda_ = self._select_seed_and_lambda(X_arr, residuals)
         else:
             self.seed_ = 42
             self.lambda_ = float(self.shrinkage_lambda)
@@ -127,24 +141,17 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
             min_samples_leaf=self.min_samples_leaf,
             random_state=self.seed_,
         )
-        self.tree_.fit(X_arr, y_arr)
+        self.tree_.fit(X_arr, residuals)
         self.shrunk_values_ = self._compute_shrinkage(self.tree_, self.lambda_)
-
-        # Stage 2: sparse Lasso correction on tree residuals
-        tree_preds = self.shrunk_values_[self.tree_.apply(X_arr)]
-        residuals = y_arr - tree_preds
-        lasso = LassoCV(cv=5, random_state=42, max_iter=10000)
-        lasso.fit(X_arr, residuals)
-        self.lasso_ = lasso
 
         return self
 
     def predict(self, X):
         check_is_fitted(self, "tree_")
         X_arr = np.asarray(X, dtype=float)
+        lasso_preds = self.lasso_.predict(X_arr)
         tree_preds = self.shrunk_values_[self.tree_.apply(X_arr)]
-        lasso_correction = self.lasso_.predict(X_arr)
-        return tree_preds + lasso_correction
+        return lasso_preds + tree_preds
 
     def _tree_lines(self, node=0, depth=0):
         t = self.tree_.tree_
@@ -154,7 +161,7 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         if t.children_left[node] == -1:
             val = self.shrunk_values_[node]
             n_s = t.n_node_samples[node]
-            return [f"{indent}|--- value: {val:.4f}  (n={n_s})"]
+            return [f"{indent}|--- adjustment: {val:+.4f}  (n={n_s})"]
 
         fname = names[int(t.feature[node])]
         thresh = t.threshold[node]
@@ -218,48 +225,51 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
         importances = self.tree_.feature_importances_
         n_leaves = self.tree_.get_n_leaves()
 
-        lines = [
-            f"CV_HSDT_Lasso(max_leaf_nodes={self.max_leaf_nodes}, "
-            f"selected_lambda={self.lambda_:.1f}, seed={self.seed_}, cv={self.cv})",
-            f"  nodes={t.node_count}, leaves={n_leaves}",
+        # Lasso section (prominent, shown first)
+        lasso_coef = self.lasso_.coef_
+        lasso_intercept = self.lasso_.intercept_
+        active = [(names[i], lasso_coef[i]) for i in range(len(names)) if abs(lasso_coef[i]) > 1e-6]
+
+        lines = ["Lasso-HSDT model: Final prediction = lasso_linear + tree_adjustment",
+                 "",
+                 "Step 1 — Global linear model (Lasso, extrapolates beyond training range):"]
+        if active:
+            terms = " + ".join(f"{c:+.4f}*{n}" for n, c in active)
+            lines.append(f"  lasso_linear = {lasso_intercept:+.4f} {terms}")
+        else:
+            lines.append(f"  lasso_linear = {lasso_intercept:+.4f}  (all features zeroed by Lasso)")
+
+        lines += [
             "",
-            "Tree structure (follow from root; leaf values are shrunk predictions):",
+            f"Step 2 — Nonlinear tree adjustment (HSDT on Lasso residuals, "
+            f"selected_lambda={self.lambda_:.1f}, seed={self.seed_}):",
+            f"  nodes={t.node_count}, leaves={n_leaves}",
+            "  Tree structure (adjustment values are shrunk residual corrections):",
         ]
         lines.extend(self._tree_lines())
 
-        # Grouped decision rules
+        # Grouped decision rules for the tree adjustment
         root_feat, root_thresh, left_paths, right_paths = self._get_grouped_leaf_paths()
         lines += [
             "",
-            "Decision rules grouped by primary split (to predict: check root, then scan one group):",
+            "  Adjustment rules grouped by primary split:",
             f"  Primary split: {root_feat} <= {root_thresh:.4g}",
             "",
-            f"  IF {root_feat} <= {root_thresh:.4g} ({len(left_paths)} rules, sorted by prediction):",
+            f"  IF {root_feat} <= {root_thresh:.4g} ({len(left_paths)} rules, sorted by adjustment):",
         ]
         for i, rule in enumerate(left_paths, 1):
             rest = " AND ".join(rule["conditions"][1:]) if len(rule["conditions"]) > 1 else "(no further conditions)"
-            lines.append(f"    Rule L{i:2d}: IF {rest}  THEN predict {rule['value']:.4f}  (n={rule['n_samples']})")
+            lines.append(f"    Adj L{i:2d}: IF {rest}  THEN adjustment = {rule['value']:+.4f}  (n={rule['n_samples']})")
         lines += [
             "",
-            f"  IF {root_feat} > {root_thresh:.4g} ({len(right_paths)} rules, sorted by prediction):",
+            f"  IF {root_feat} > {root_thresh:.4g} ({len(right_paths)} rules, sorted by adjustment):",
         ]
         for i, rule in enumerate(right_paths, 1):
             rest = " AND ".join(rule["conditions"][1:]) if len(rule["conditions"]) > 1 else "(no further conditions)"
-            lines.append(f"    Rule R{i:2d}: IF {rest}  THEN predict {rule['value']:.4f}  (n={rule['n_samples']})")
-
-        # Lasso correction section
-        lasso_coef = self.lasso_.coef_
-        active = [(names[i], lasso_coef[i]) for i in range(len(names)) if abs(lasso_coef[i]) > 1e-6]
-        lines += ["", "Lasso residual correction (add to tree prediction above):"]
-        if active:
-            terms = " + ".join(f"{c:+.4f}*{n}" for n, c in active)
-            lines.append(f"  correction = {terms}")
-            lines.append(f"  (Final prediction = tree_pred + correction; correction accounts for linear trends)")
-        else:
-            lines.append("  correction = 0  (tree captures all structure; no linear correction needed)")
+            lines.append(f"    Adj R{i:2d}: IF {rest}  THEN adjustment = {rule['value']:+.4f}  (n={rule['n_samples']})")
 
         order = np.argsort(importances)[::-1]
-        lines += ["", "Feature importances (Gini-based, higher = more important):"]
+        lines += ["", "Feature importances in tree adjustment (Gini-based):"]
         for rank, fi in enumerate(order):
             if importances[fi] > 1e-6:
                 direction = self._infer_direction(fi)
@@ -267,10 +277,6 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
                     f"  {rank+1:2d}. {names[fi]:<25s}  {importances[fi]:.4f}  "
                     f"(net effect: {direction})"
                 )
-
-        unused = [names[fi] for fi in range(len(names)) if importances[fi] <= 1e-6]
-        if unused:
-            lines.append(f"\nFeatures not used in tree (zero importance): {', '.join(unused)}")
 
         return "\n".join(lines)
 
