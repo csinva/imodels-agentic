@@ -66,6 +66,25 @@ try:
 except ImportError:
     pass
 
+# Human-readable descriptions for each model
+MODEL_DESCRIPTIONS = {
+    "PyGAM":       "generalized additive model with 10 splines per feature and default settings",
+    "DT_mini":     "small decision tree with up to 8 max_leaf_nodes",
+    "DT_large":    "large decision tree with up to 20 max_leaf_nodes",
+    "OLS":         "ordinary least squares linear regression",
+    "LassoCV":     "Lasso linear model with cross-validation to select the regularization parameter",
+    "RidgeCV":     "Ridge linear model with cross-validation to select the regularization parameter",
+    "RF":          "random forest with 50 tree estimators, each with max_depth of 5",
+    "GBM":         "gradient boosting machine with 100 tree estimators, each with max_depth of 3",
+    "MLP":         "multi-layer perceptron with default hidden layer size, ReLU activation, and Adam solver",
+    "FIGS_mini":   "small FIGS with up to 8 max_rules",
+    "FIGS_large":  "large FIGS with up to 20 max_rules",
+    "RuleFit":     "RuleFit with up to 20 max_rules",
+    "HSTree_mini": "small HSTree with up to 8 max_leaf_nodes",
+    "HSTree_large":"large HSTree with up to 20 max_leaf_nodes",
+    "TreeGAM":     "tree-based generalized additive model with max_leaf_nodes of 3",
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -146,7 +165,8 @@ if __name__ == "__main__":
         "mean_rmse":                          f"{avg_rmse[mname]:.6f}" if mname in avg_rmse else "",
         "frac_interpretability_tests_passed": f"{interp_scores[mname]:.4f}",
         "status":                             "baseline",
-        "description":                        mname,
+        "model_name":                         mname,
+        "description":                        MODEL_DESCRIPTIONS.get(mname, mname),
     } for mname in model_names]
     upsert_overall_results(overall_rows, RESULTS_DIR)
 

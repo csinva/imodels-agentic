@@ -23,7 +23,7 @@ MODEL_GROUPS = {
     "imodels":   {"FIGS_mini", "FIGS_large", "RuleFit", "HSTree_mini", "HSTree_large", "TreeGAM"},
     "linear":    {"OLS", "LASSO", "LassoCV", "RidgeCV"},
     "tree":      {"DT_mini", "DT_large"},
-    "gam":       {"GAM"},
+    "gam":       {"GAM", "PyGAM"},
 }
 GROUP_COLORS = {
     "black-box": "#e74c3c",
@@ -49,7 +49,7 @@ def plot_interp_vs_performance(csv_path: str | Path, out_path: str | Path | None
     out_path = Path(out_path)
 
     df = pd.read_csv(csv_path)
-    required = {"mean_rmse", "frac_interpretability_tests_passed", "description"}
+    required = {"mean_rmse", "frac_interpretability_tests_passed", "model_name"}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Missing required columns: {sorted(missing)}")
@@ -58,7 +58,7 @@ def plot_interp_vs_performance(csv_path: str | Path, out_path: str | Path | None
     df["mean_rmse"] = df["mean_rmse"].astype(float)
     df["frac_interpretability_tests_passed"] = df["frac_interpretability_tests_passed"].astype(float)
 
-    names  = df["description"].tolist()
+    names  = df["model_name"].tolist()
     x      = df["frac_interpretability_tests_passed"].to_numpy()
     y      = df["mean_rmse"].to_numpy()
     colors = [_model_color(n) for n in names]
@@ -75,8 +75,6 @@ def plot_interp_vs_performance(csv_path: str | Path, out_path: str | Path | None
                    edgecolors="white", linewidths=0.6)
 
 
-    # cut off names for better readability
-    names = [name[:20] + "..." if len(name) > 23 else name for name in names]
     texts = [ax.text(xi, yi, name, fontsize=8.5)
              for xi, yi, name in zip(x, y, names)]
 
