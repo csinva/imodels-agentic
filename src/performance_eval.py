@@ -249,7 +249,7 @@ def compute_rank_scores(dataset_rmses):
 # Overall results CSV
 # ---------------------------------------------------------------------------
 
-OVERALL_CSV_COLS = ["commit", "mean_rmse", "frac_interpretability_tests_passed", "status", "model_name", "description"]
+OVERALL_CSV_COLS = ["commit", "mean_rank", "frac_interpretability_tests_passed", "status", "model_name", "description"]
 
 
 def upsert_overall_results(rows, results_dir):

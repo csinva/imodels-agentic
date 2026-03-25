@@ -155,8 +155,8 @@ if __name__ == "__main__":
 
     overall_rows = [{
         "commit":                             'baseline',
-        "mean_rmse":                          f"{avg_rmse[mname]:.6f}" if mname in avg_rmse else "",
-        "frac_interpretability_tests_passed": f"{interp_scores[mname]:.4f}",
+        "mean_rank":                          f"{avg_rank[mname]:.2f}" if mname in avg_rank else "",
+        "frac_interpretability_tests_passed": f"{interp_scores[mname]:.4f}" if mname in interp_scores else "",
         "status":                             "baseline",
         "model_name":                         mname,
         "description":                        MODEL_DESCRIPTIONS.get(mname, mname),

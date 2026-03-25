@@ -8,7 +8,7 @@ The idea: give an AI agent a training setup and let it experiment autonomously. 
 
 The repo has three files that matter:
 
-- **`run_baselines.py`** — evaluates a fixed set of baseline regressors across two metrics: (1) `frac_interpretability_tests_passed` — LLM-graded interpretability tests, and (2) `mean_rmse` — RMSE on subsampled regression datasets. Results saved to `results/overall_results.csv`. **Not modified by the agent.**
+- **`run_baselines.py`** — evaluates a fixed set of baseline regressors across two metrics: (1) `frac_interpretability_tests_passed` — LLM-graded interpretability tests, and (2) `mean_rank` — average rank of prediction performance on regression datasets. Results saved to `results/overall_results.csv`. **Not modified by the agent.**
 - **`interpretable_regressor.py`** — the single file the agent edits. Defines `InterpretableRegressor` (a scikit-learn compatible model) and an evaluation loop that runs the same metrics and updates `results/overall_results.csv`. **This file is edited and iterated on by the agent.**
 - **`program.md`** — instructions for the agent. Point your agent here and let it go. **This file is edited and iterated on by the human.**
 
@@ -16,7 +16,7 @@ The repo has three files that matter:
 
 Two metrics are tracked in `results/overall_results.csv`:
 
-- **`mean_rmse`** — mean RMSE across regression datasets (lower is better, evaluated on held-out test sets)
+- **`mean_rank`** — mean rank across regression datasets (lower is better, evaluated on held-out test sets)
 - **`frac_interpretability_tests_passed`** — fraction of LLM-graded interpretability tests passed (higher is better)
 
 ## Quick start
@@ -65,7 +65,7 @@ interpretable_regressor.py          — regressor definition (agent modifies thi
 program.md        — agent instructions
 pyproject.toml    — dependencies
 results/          — output plots, CSVs, and scores
-  overall_results.csv — mean_rmse + frac_interpretability_tests_passed per model
+  overall_results.csv — mean_rank + frac_interpretability_tests_passed per model
 src/             — supporting modules (interpretability tests, performance eval)
 ```
 
@@ -73,4 +73,4 @@ src/             — supporting modules (interpretability tests, performance eva
 
 - **Single file to modify.** The agent only touches `interpretable_regressor.py`. Diffs are small and reviewable.
 - **Fixed dataset split.** Train/test splits are fixed (seed=42, 80/20), so experiments are comparable regardless of what the agent changes.
-- **Two metrics.** `mean_rmse` measures predictive performance; `frac_interpretability_tests_passed` measures how well the model communicates its behavior to an LLM. Both are tracked — neither is a hard constraint.
+- **Two metrics.** `mean_rank` measures predictive performance; `frac_interpretability_tests_passed` measures how well the model communicates its behavior to an LLM. Both are tracked — neither is a hard constraint.

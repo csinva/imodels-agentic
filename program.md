@@ -1,6 +1,6 @@
 # autoresearch — interpretable regressors
 
-This is an experiment to have the LLM autonomously research scikit-learn regressors that score well on two metrics: predictive performance (mean RMSE) and interpretability (fraction of LLM-graded tests passed).
+This is an experiment to have the LLM autonomously research scikit-learn regressors that score well on two metrics: predictive performance (mean rank) and interpretability (fraction of LLM-graded tests passed).
 
 ## Setup
 
@@ -38,10 +38,10 @@ This trains `InterpretableRegressor`, runs interpretability tests, and updates `
 
 Optimize both metrics in `results/overall_results.csv`:
 
-- **`mean_rmse`** — mean RMSE across regression datasets (lower is better)
+- **`mean_rank`** — mean performance rank across regression datasets (lower is better)
 - **`frac_interpretability_tests_passed`** — fraction of LLM-graded interpretability tests passed (higher is better)
 
-Both metrics matter. A model that scores well on RMSE but poorly on interpretability tests, or vice versa, is not ideal. Look at the baseline scores in `overall_results.csv` to understand the trade-off space. We want pareto improvements over the baselines.
+Both metrics matter. A model that scores well on mean_rank but poorly on interpretability tests, or vice versa, is not ideal. Look at the baseline scores in `overall_results.csv` to understand the trade-off space. We want pareto improvements over the baselines.
 
 **The first run**: Your very first run should always be to establish the baseline — run the script as is, record the results.
 
@@ -64,11 +64,11 @@ When an experiment is done, it should log to the `results/overall_results.csv`
 The CSV has a header row and 5 columns:
 
 ```
-commit	mean_rmse	frac_interpretability_tests_passed	status	description
+commit	mean_rank	frac_interpretability_tests_passed	status	description
 ```
 
 1. git commit hash (short, 7 chars)
-2. mean_rmse achieved — use empty for crashes (note: interpretable_regressor.py does not compute mean_rmse; check overall_results.csv for the baseline value to compare against)
+2. mean_rank achieved — use empty for crashes (note: interpretable_regressor.py does not compute mean_rank; check overall_results.csv for the baseline value to compare against)
 3. frac_interpretability_tests_passed — from the script output
 4. status: `keep`, `discard`, or `crash` (original runs have status `baseline`)
 5. shorthand name of the model tried
@@ -94,6 +94,7 @@ LOOP FOREVER:
 **Ideas to try** (not exhaustive — be creative):
 - Read this paper and try novel ideas inspired by it: https://arxiv.org/abs/2103.11251
 - Try novel ways to induce sparsity or perform elaborate feature selection
+- Try postprocessing EBM shaping functions into a more understandable representation
 - Try new regularization techniques
 - Try novel splitting criteria
 

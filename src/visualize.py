@@ -50,25 +50,25 @@ def _model_color(name):
 
 
 def plot_interp_vs_performance(csv_path: str | Path, out_path: str | Path | None = None) -> None:
-    """Scatter: x=frac_interpretability_tests_passed, y=mean_rmse, labeled by description."""
+    """Scatter: x=frac_interpretability_tests_passed, y=mean_rank, labeled by description."""
     csv_path = Path(csv_path)
     if out_path is None:
         out_path = csv_path.parent / "interpretability_vs_performance.png"
     out_path = Path(out_path)
 
     df = pd.read_csv(csv_path)
-    required = {"mean_rmse", "frac_interpretability_tests_passed", "model_name"}
+    required = {"mean_rank", "frac_interpretability_tests_passed", "model_name"}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Missing required columns: {sorted(missing)}")
 
-    df = df.dropna(subset=list(required)).copy()
-    df["mean_rmse"] = df["mean_rmse"].astype(float)
+    df = df.replace("", np.nan).dropna(subset=list(required)).copy()
+    df["mean_rank"] = df["mean_rank"].astype(float)
     df["frac_interpretability_tests_passed"] = df["frac_interpretability_tests_passed"].astype(float)
 
     names  = df["model_name"].tolist()
     x      = df["frac_interpretability_tests_passed"].to_numpy()
-    y      = df["mean_rmse"].to_numpy()
+    y      = df["mean_rank"].to_numpy()
     colors = [_model_color(n) for n in names]
 
     try:
@@ -87,8 +87,8 @@ def plot_interp_vs_performance(csv_path: str | Path, out_path: str | Path | None
              for xi, yi, name in zip(x, y, names)]
 
     # change ylim to ignore largest outlier
-    second_largest = np.partition(y, -2)[-2]
-    ax.set_ylim(top=second_largest * 1.1, bottom=y.min() - 0.05) #, bottom=0)  # start y-axis at 0 for better interpretability
+    # second_largest = np.partition(y, -2)[-2]
+    # ax.set_ylim(top=second_largest * 1.1, bottom=y.min() - 0.05) #, bottom=0)  # start y-axis at 0 for better interpretability
 
     if use_adjust:
         adjust_text(texts, x=x, y=y, ax=ax,
@@ -99,7 +99,7 @@ def plot_interp_vs_performance(csv_path: str | Path, out_path: str | Path | None
                     arrowprops=dict(arrowstyle="-", color="grey", lw=0.6))
 
     ax.set_xlabel("Frac Interpretability Tests Passed", fontsize=10)
-    ax.set_ylabel("Mean RMSE", fontsize=10)
+    ax.set_ylabel("Mean Rank", fontsize=10)
     ax.set_title("Interpretability vs. Performance", fontsize=12, fontweight="bold")
     ax.grid(True, alpha=0.3)
 
