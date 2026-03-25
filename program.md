@@ -6,7 +6,7 @@ This is an experiment to have the LLM autonomously research scikit-learn regress
 
 To set up a new experiment, do the following:
 
-1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar25`). The branch `autoresearch/<tag>` must not already exist — this is a fresh run. Completely ignore the past_runs folder. 
+1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar25`). The branch `autoresearch/<tag>` must not already exist — this is a fresh run.
 2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current master.
 3. **Read the in-scope files**: The repo is small. Read these files for full context:
    - `readme.md` — repository context.
@@ -32,7 +32,7 @@ This trains `InterpretableRegressor`, runs interpretability tests, and updates `
 - Modify `run_baselines.py`. It is read-only.
 - Modify anything in the `src/` folder. It contains the ground truth tests.
 - Install new packages. You can only use what's already in `pyproject.toml`.
-- Read the past_runs folder.
+- Read the `results/cached_runs` folder.
 
 ## Goal
 

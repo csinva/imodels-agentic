@@ -21,6 +21,13 @@ from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Lasso, LassoCV, LinearRegression, RidgeCV
 from sklearn.neural_network import MLPRegressor
 from sklearn.tree import DecisionTreeRegressor
+from pygam import LinearGAM
+from imodels import (
+    FIGSRegressor,
+    HSTreeRegressorCV,
+    RuleFitRegressor,
+)
+from interpret.glassbox import ExplainableBoostingRegressor
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 from interp_eval import ALL_TESTS, HARD_TESTS, INSIGHT_TESTS, run_all_interp_tests
@@ -32,6 +39,7 @@ from visualize import plot_interp_vs_performance
 # ---------------------------------------------------------------------------
 
 REGRESSOR_DEFS = [
+    ("PyGAM",      LinearGAM(n_splines=10)),
     ("DT_mini",    DecisionTreeRegressor(max_leaf_nodes=8,  random_state=42)),
     ("DT_large",   DecisionTreeRegressor(max_leaf_nodes=20, random_state=42)),
     ("OLS",        LinearRegression()),
@@ -40,31 +48,13 @@ REGRESSOR_DEFS = [
     ("RF",         RandomForestRegressor(n_estimators=50, max_depth=5, random_state=42)),
     ("GBM",        GradientBoostingRegressor(n_estimators=100, max_depth=3, random_state=42)),
     ("MLP",        MLPRegressor(random_state=42)),
+    ("FIGS_mini",    FIGSRegressor(max_rules=8,  random_state=42)),
+    ("FIGS_large",   FIGSRegressor(max_rules=20, random_state=42)),
+    ("RuleFit",      RuleFitRegressor(max_rules=20, random_state=42)),
+    ("HSTree_mini",  HSTreeRegressorCV(max_leaf_nodes=8,  random_state=42)),
+    ("HSTree_large", HSTreeRegressorCV(max_leaf_nodes=20, random_state=42)),
+    ("EBM",          ExplainableBoostingRegressor(random_state=42, outer_bags=3, max_rounds=1000)),
 ]
-
-try:
-    from pygam import LinearGAM
-    REGRESSOR_DEFS = [("PyGAM", LinearGAM(n_splines=10))] + REGRESSOR_DEFS
-except ImportError:
-    pass
-
-try:
-    from imodels import (
-        FIGSRegressor,
-        HSTreeRegressorCV,
-        RuleFitRegressor,
-        TreeGAMRegressor,
-    )
-    REGRESSOR_DEFS += [
-        ("FIGS_mini",    FIGSRegressor(max_rules=8,  random_state=42)),
-        ("FIGS_large",   FIGSRegressor(max_rules=20, random_state=42)),
-        ("RuleFit",      RuleFitRegressor(max_rules=20, random_state=42)),
-        ("HSTree_mini",  HSTreeRegressorCV(max_leaf_nodes=8,  random_state=42)),
-        ("HSTree_large", HSTreeRegressorCV(max_leaf_nodes=20, random_state=42)),
-        ("TreeGAM",      TreeGAMRegressor(max_leaf_nodes=3, random_state=42)),
-    ]
-except ImportError:
-    pass
 
 # Human-readable descriptions for each model
 MODEL_DESCRIPTIONS = {
@@ -82,7 +72,7 @@ MODEL_DESCRIPTIONS = {
     "RuleFit":     "RuleFit with up to 20 max_rules",
     "HSTree_mini": "small HSTree with up to 8 max_leaf_nodes",
     "HSTree_large":"large HSTree with up to 20 max_leaf_nodes",
-    "TreeGAM":     "tree-based generalized additive model with max_leaf_nodes of 3",
+    "EBM":         "explainable boosting machine (InterpretML) with 3 outer bags and 1000 max rounds",
 }
 
 # ---------------------------------------------------------------------------

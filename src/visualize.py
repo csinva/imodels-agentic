@@ -20,25 +20,33 @@ import pandas as pd
 
 MODEL_GROUPS = {
     "black-box": {"RF", "GBM", "MLP"},
-    "imodels":   {"FIGS_mini", "FIGS_large", "RuleFit", "HSTree_mini", "HSTree_large", "TreeGAM"},
-    "linear":    {"OLS", "LASSO", "LassoCV", "RidgeCV"},
-    "tree":      {"DT_mini", "DT_large"},
-    "gam":       {"GAM", "PyGAM"},
+    "imodels":   {"FIGS_mini", "FIGS_large", "RuleFit"},
+    "additive":    {"OLS", "LASSO", "LassoCV", "RidgeCV", "EBM", "PyGAM"},
+    "tree":      {"DT_mini", "DT_large", "HSTree_mini", "HSTree_large"},
 }
 GROUP_COLORS = {
-    "black-box": "#e74c3c",
-    "imodels":   "#27ae60",
-    "linear":    "#2980b9",
-    "tree":      "#e67e22",
-    "gam":       "#8e44ad",
+    "black-box": "black",
+    "imodels":   "tab:orange",
+    "additive":  "tab:green",
+    "tree":      "tab:red",
 }
+
+
+_blues_cmap = plt.cm.Blues
+_unknown_model_index = 0
+_unknown_model_colors = {}
 
 
 def _model_color(name):
+    global _unknown_model_index
     for group, members in MODEL_GROUPS.items():
         if name in members:
             return GROUP_COLORS[group]
-    return "#7f8c8d"
+    if name not in _unknown_model_colors:
+        t = 0.3 + 0.6 * _unknown_model_index / max(1, 10)
+        _unknown_model_colors[name] = _blues_cmap(t)
+        _unknown_model_index += 1
+    return _unknown_model_colors[name]
 
 
 def plot_interp_vs_performance(csv_path: str | Path, out_path: str | Path | None = None) -> None:

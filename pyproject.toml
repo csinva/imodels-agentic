@@ -9,6 +9,7 @@ dependencies = [
     "azure-identity>=1.25.3",
     "datasets>=4.8.3",
     "imodels>=2.0.4",
+    "interpret>=0.6.0",
     "imodelsx>=1.0.13",
     "markdown>=3.10.2",
     "matplotlib>=3.10.0",

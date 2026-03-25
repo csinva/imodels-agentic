@@ -1,3 +1,7 @@
+# General style
+
+- Do not add try-except statements for imports
+
 # Python Package Management with uv
 
 Use uv exclusively for Python package management in this project.
@@ -26,3 +30,5 @@ Use these commands:
 - Or using uv CLI:
     - `uv add package-name --script script.py`
     - `uv remove package-name --script script.py`
+
+
