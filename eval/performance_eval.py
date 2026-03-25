@@ -253,7 +253,7 @@ OVERALL_CSV_COLS = ["commit", "mean_rmse", "frac_interpretability_tests_passed",
 
 
 def upsert_overall_results(rows, results_dir):
-    """Write or update overall_results.csv, replacing existing rows by model_name.
+    """Write or update overall_results.csv, replacing existing rows by (model_name, description).
 
     Args:
         rows: list of dicts with keys matching OVERALL_CSV_COLS
@@ -262,15 +262,13 @@ def upsert_overall_results(rows, results_dir):
     import csv as _csv
     path = os.path.join(results_dir, "overall_results.csv")
 
-    # Load existing rows, drop any being replaced (keyed by model_name).
-    # Also drop old-format rows where description matches a new model_name.
+    # Load existing rows, drop any being replaced (keyed by model_name AND description).
     existing = []
-    new_model_names = {r["model_name"] for r in rows}
+    new_keys = {(r["model_name"], r.get("description", "")) for r in rows}
     if os.path.exists(path):
         with open(path, newline="") as f:
             for row in _csv.DictReader(f):
-                if (row.get("model_name") not in new_model_names
-                        and row.get("description") not in new_model_names):
+                if (row.get("model_name"), row.get("description", "")) not in new_keys:
                     existing.append(row)
 
     all_rows = existing + [{k: r.get(k, "") for k in OVERALL_CSV_COLS} for r in rows]
