@@ -16,7 +16,7 @@ import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.linear_model import LassoCV
 from sklearn.model_selection import KFold
-from sklearn.tree import DecisionTreeRegressor
+from sklearn.tree import DecisionTreeRegressor, export_text
 from sklearn.utils.validation import check_is_fitted
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "eval"))
@@ -32,8 +32,8 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
     """
     Interpretable scikit-learn compatible regressor.
 
-    This is just a baseline implementation of a shallow decision tree.
-    The agent may modify this class freely — algorithm, structure, hyperparameters, etc.
+    This is just a baseline implementation of a shallow decision tree piggybacking off of sklearn.
+    The agent may modify this class freely — algorithm, structure, hyperparameters, etc. It should not just copy from sklearn.
     Must implement: fit(X, y), predict(X), and __str__().
     """
 
@@ -56,13 +56,7 @@ class InterpretableRegressor(BaseEstimator, RegressorMixin):
 
     def __str__(self):
         check_is_fitted(self, "tree_")
-        n_leaves = self.tree_.get_n_leaves()
-        n_nodes = self.tree_.tree_.node_count
-        return (
-            f"InterpretableRegressor(max_depth={self.max_depth}, "
-            f"min_samples_leaf={self.min_samples_leaf})\n"
-            f"  nodes={n_nodes}, leaves={n_leaves}"
-        )
+        return export_text(self.tree_)
 
 
 # Make class picklable when script is run as __main__ (required for joblib caching/parallel)

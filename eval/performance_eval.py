@@ -274,7 +274,7 @@ def upsert_overall_results(rows, results_dir):
                     existing.append(row)
 
     all_rows = existing + [{k: r.get(k, "") for k in OVERALL_CSV_COLS} for r in rows]
-    all_rows.sort(key=lambda r: r.get("model_name", ""))
+    # all_rows.sort(key=lambda r: r.get("model_name", ""))
 
     with open(path, "w", newline="") as f:
         writer = _csv.DictWriter(f, fieldnames=OVERALL_CSV_COLS)
