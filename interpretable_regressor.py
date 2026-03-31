@@ -184,8 +184,8 @@ if __name__ == "__main__":
 
     upsert_overall_results([{
         "commit":                             git_hash,
-        "mean_rank":                          f"{mean_rank:.2f}" if not np.isnan(mean_rank) else "",
-        "frac_interpretability_tests_passed": f"{n_passed / total:.4f}" if total > 0 else "",
+        "mean_rank":                          f"{mean_rank:.2f}" if not np.isnan(mean_rank) else "nan",
+        "frac_interpretability_tests_passed": f"{n_passed / total:.4f}" if total > 0 else "nan",
         "status":                             "",
         "model_name":                         "DecisionTreeSimple",
         "description":                        "Baseline interpretable regressor (shallow decision tree)",

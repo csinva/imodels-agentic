@@ -245,8 +245,11 @@ def compute_rank_scores(dataset_rmses):
                 ranks_per_model[name].append(rank_map[name])
                 mean_rmse_per_model[name].append(model_rmses[name])
 
-    avg_rank = {n: float(np.mean(v)) for n, v in ranks_per_model.items() if v}
-    avg_rmse = {n: float(np.mean(v)) for n, v in mean_rmse_per_model.items() if v}
+    n_datasets = len(dataset_rmses)
+    avg_rank = {n: float(np.mean(v)) if len(v) == n_datasets else float("nan")
+                for n, v in ranks_per_model.items() if v}
+    avg_rmse = {n: float(np.mean(v)) if len(v) == n_datasets else float("nan")
+                for n, v in mean_rmse_per_model.items() if v}
     return avg_rank, avg_rmse
 
 

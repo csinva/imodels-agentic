@@ -55,7 +55,7 @@ REGRESSOR_DEFS = [
     ("HSTree_mini",  HSTreeRegressorCV(max_leaf_nodes=8,  random_state=42)),
     ("HSTree_large", HSTreeRegressorCV(max_leaf_nodes=20, random_state=42)),
     ("EBM",          ExplainableBoostingRegressor(random_state=42, outer_bags=3, max_rounds=1000)),
-    ("TabPFN",       TabPFNRegressor(device="auto", random_state=42)),
+    ("TabPFN",       TabPFNRegressor(device="cpu", random_state=42)),
 ]
 
 # Human-readable descriptions for each model
@@ -155,8 +155,8 @@ if __name__ == "__main__":
 
     overall_rows = [{
         "commit":                             'baseline',
-        "mean_rank":                          f"{avg_rank[mname]:.2f}" if mname in avg_rank else "",
-        "frac_interpretability_tests_passed": f"{interp_scores[mname]:.4f}" if mname in interp_scores else "",
+        "mean_rank":                          f"{avg_rank[mname]:.2f}" if mname in avg_rank else "nan",
+        "frac_interpretability_tests_passed": f"{interp_scores[mname]:.4f}" if mname in interp_scores else "nan",
         "status":                             "baseline",
         "model_name":                         mname,
         "description":                        MODEL_DESCRIPTIONS.get(mname, mname),

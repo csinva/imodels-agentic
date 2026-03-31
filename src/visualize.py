@@ -90,7 +90,7 @@ def plot_interp_vs_performance(csv_path: str | Path, out_path: str | Path | None
     if missing:
         raise ValueError(f"Missing required columns: {sorted(missing)}")
 
-    df = df.replace("", np.nan).dropna(subset=list(required)).copy()
+    df = df.replace("", np.nan).replace("nan", np.nan).dropna(subset=list(required)).copy()
     df["mean_rank"] = df["mean_rank"].astype(float)
     df["frac_interpretability_tests_passed"] = df["frac_interpretability_tests_passed"].astype(float)
 

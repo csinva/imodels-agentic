@@ -16,10 +16,12 @@ Tests:
     unit sensitivity, predict above threshold, predict below threshold — designed to separate interpretable
     models (sparse linear, GAM, shallow tree) from black-box models (MLP, GBDT)
     and reward finer degrees of interpretability
-  Simulatability (7): point predictions on increasingly complex data (8-feature
+  Simulatability (14): point predictions on increasingly complex data (8-feature
     mixed-sign, 15-feature sparse, quadratic, triple interaction, Friedman #1,
-    cascading threshold, quadratic counterfactual) — simple models (linear, shallow
-    tree) remain traceable from their string; GBDTs and MLPs do not
+    cascading threshold, quadratic counterfactual, exponential decay, piecewise
+    3-segment, 20-feature sparse, sinusoidal, abs-value, 12-feature all-active,
+    nested threshold) — simple models (linear, shallow tree) remain traceable
+    from their string; GBDTs and MLPs do not
 
 Notes:
     Each test should ask only one question.
@@ -377,6 +379,74 @@ def _cascading_threshold_data(n=800, seed=65):
     rng = np.random.RandomState(seed)
     X = rng.randn(n, 6)
     y = np.where(X[:, 0] > 0, 3.0 * X[:, 1], -2.0 * X[:, 2]) + rng.randn(n) * 0.3
+    return X, y
+
+
+def _exponential_decay_data(n=700, seed=70):
+    """y = 5*exp(-x0) + 2*x1, mix of exponential and linear."""
+    rng = np.random.RandomState(seed)
+    X = rng.randn(n, 4)
+    y = 5.0 * np.exp(-X[:, 0]) + 2.0 * X[:, 1] + rng.randn(n) * 0.3
+    return X, y
+
+
+def _piecewise_three_segment_data(n=800, seed=71):
+    """y is piecewise linear in x0 with 3 segments: slope 0 for x0<-1, slope 3 for -1<x0<1, slope 0.5 for x0>1."""
+    rng = np.random.RandomState(seed)
+    X = rng.randn(n, 4)
+    x0 = X[:, 0]
+    y = np.where(x0 < -1, -3.0,
+         np.where(x0 < 1, 3.0 * x0, 3.0 + 0.5 * (x0 - 1.0))) + rng.randn(n) * 0.2
+    return X, y
+
+
+def _twenty_feature_sparse_data(n=1000, seed=72):
+    """20 features, only 4 active with varying coefficients."""
+    rng = np.random.RandomState(seed)
+    X = rng.randn(n, 20)
+    coefs = np.zeros(20)
+    coefs[2] = 6.0
+    coefs[7] = -3.5
+    coefs[11] = 2.0
+    coefs[18] = -1.5
+    y = X @ coefs + rng.randn(n) * 0.5
+    return X, y, coefs
+
+
+def _sinusoidal_data(n=800, seed=73):
+    """y = 4*sin(x0) + 2*cos(x1) + x2, trigonometric nonlinearity."""
+    rng = np.random.RandomState(seed)
+    X = rng.randn(n, 5)
+    y = 4.0 * np.sin(X[:, 0]) + 2.0 * np.cos(X[:, 1]) + X[:, 2] + rng.randn(n) * 0.3
+    return X, y
+
+
+def _abs_value_data(n=700, seed=74):
+    """y = 3*|x0| - 2*|x1| + x2, V-shaped nonlinearity."""
+    rng = np.random.RandomState(seed)
+    X = rng.randn(n, 5)
+    y = 3.0 * np.abs(X[:, 0]) - 2.0 * np.abs(X[:, 1]) + X[:, 2] + rng.randn(n) * 0.3
+    return X, y
+
+
+def _twelve_feature_all_active_data(n=800, seed=75):
+    """12 features all active with decreasing coefficients."""
+    rng = np.random.RandomState(seed)
+    X = rng.randn(n, 12)
+    coefs = np.array([5.0, -4.0, 3.5, -3.0, 2.5, -2.0, 1.5, -1.0, 0.8, -0.6, 0.4, -0.2])
+    y = X @ coefs + rng.randn(n) * 0.5
+    return X, y, coefs
+
+
+def _nested_threshold_data(n=900, seed=76):
+    """Nested thresholds: if x0>0 and x1>0 then y~5, elif x0>0 then y~2, else y~-1. Plus noise features."""
+    rng = np.random.RandomState(seed)
+    X = rng.randn(n, 5)
+    y = np.where(
+        X[:, 0] > 0,
+        np.where(X[:, 1] > 0, 5.0, 2.0),
+        -1.0
+    ) + rng.randn(n) * 0.2
     return X, y
 
 
@@ -1241,6 +1311,203 @@ def simulatability_quadratic_counterfactual(model, llm):
                 ground_truth=round(delta, 3), response=response)
 
 
+def simulatability_exponential_decay(model, llm):
+    """Simulate on exponential + linear data: y = 5*exp(-x0) + 2*x1.
+
+    Trees and GAMs approximate with piecewise steps that the LLM can trace.
+    Linear models give a linear approximation (still readable). GBDTs/MLPs are opaque.
+    """
+    X, y = _exponential_decay_data()
+    names = [f"x{i}" for i in range(4)]
+    m = _safe_clone(model); m.fit(X, y)
+    sample = np.array([[0.5, 1.0, 0.0, 0.0]])
+    true_pred = float(m.predict(sample)[0])
+    response = ask_llm(
+        llm, get_model_str(m, names),
+        "What does this model predict for x0=0.5, x1=1.0, x2=0.0, x3=0.0? "
+        "Answer with just a single number.",
+    )
+    tol = max(abs(true_pred) * 0.2, 1.0)
+    passed = False
+    for num_str in reversed(re.findall(r"-?\d+\.?\d*", response or "")):
+        try:
+            if abs(float(num_str) - true_pred) < tol:
+                passed = True; break
+        except ValueError: pass
+    return dict(test="simulatability_exponential_decay", passed=passed,
+                ground_truth=round(true_pred, 3), response=response)
+
+
+def simulatability_piecewise_three_segment(model, llm):
+    """Simulate on piecewise-linear data with 3 segments on x0.
+
+    Shallow trees naturally capture the breakpoints. Linear models give a single
+    slope (readable but inaccurate). GBDTs/MLPs are opaque.
+    """
+    X, y = _piecewise_three_segment_data()
+    names = [f"x{i}" for i in range(4)]
+    m = _safe_clone(model); m.fit(X, y)
+    sample = np.array([[0.5, 0.0, 0.0, 0.0]])  # middle segment, expected ~1.5
+    true_pred = float(m.predict(sample)[0])
+    response = ask_llm(
+        llm, get_model_str(m, names),
+        "What does this model predict for x0=0.5, x1=0.0, x2=0.0, x3=0.0? "
+        "Answer with just a single number.",
+    )
+    tol = max(abs(true_pred) * 0.2, 0.8)
+    passed = False
+    for num_str in reversed(re.findall(r"-?\d+\.?\d*", response or "")):
+        try:
+            if abs(float(num_str) - true_pred) < tol:
+                passed = True; break
+        except ValueError: pass
+    return dict(test="simulatability_piecewise_three_segment", passed=passed,
+                ground_truth=round(true_pred, 3), response=response)
+
+
+def simulatability_twenty_features_sparse(model, llm):
+    """Simulate on 20 features where only 4 matter.
+
+    Even larger than the 15-feature test. Interpretable models highlight which
+    features have zero effect; black-box models present all 20 opaquely.
+    """
+    X, y, _ = _twenty_feature_sparse_data()
+    names = [f"x{i}" for i in range(20)]
+    m = _safe_clone(model); m.fit(X, y)
+    sample = np.zeros((1, 20))
+    sample[0, 2] = 1.5    # active: coef 6.0
+    sample[0, 7] = -0.8   # active: coef -3.5
+    sample[0, 11] = 1.0   # active: coef 2.0
+    sample[0, 18] = -0.5  # active: coef -1.5
+    sample[0, 4] = 0.3    # noise
+    sample[0, 15] = -0.6  # noise
+    true_pred = float(m.predict(sample)[0])
+    feat_str = ", ".join(f"x{i}={sample[0,i]}" for i in range(20) if sample[0, i] != 0)
+    response = ask_llm(
+        llm, get_model_str(m, names),
+        f"What does this model predict for the input where {feat_str} "
+        f"and all other features are 0? Answer with just a single number.",
+    )
+    tol = max(abs(true_pred) * 0.15, 2.0)
+    passed = False
+    for num_str in reversed(re.findall(r"-?\d+\.?\d*", response or "")):
+        try:
+            if abs(float(num_str) - true_pred) < tol:
+                passed = True; break
+        except ValueError: pass
+    return dict(test="simulatability_twenty_features_sparse", passed=passed,
+                ground_truth=round(true_pred, 3), response=response)
+
+
+def simulatability_sinusoidal(model, llm):
+    """Simulate on sinusoidal data: y = 4*sin(x0) + 2*cos(x1) + x2.
+
+    GAMs with partial-effect tables can be traced through. Trees approximate
+    with piecewise steps. GBDTs/MLPs are opaque.
+    """
+    X, y = _sinusoidal_data()
+    names = [f"x{i}" for i in range(5)]
+    m = _safe_clone(model); m.fit(X, y)
+    sample = np.array([[1.0, 0.5, -0.3, 0.0, 0.0]])
+    true_pred = float(m.predict(sample)[0])
+    response = ask_llm(
+        llm, get_model_str(m, names),
+        "What does this model predict for x0=1.0, x1=0.5, x2=-0.3, x3=0.0, x4=0.0? "
+        "Answer with just a single number.",
+    )
+    tol = max(abs(true_pred) * 0.2, 1.0)
+    passed = False
+    for num_str in reversed(re.findall(r"-?\d+\.?\d*", response or "")):
+        try:
+            if abs(float(num_str) - true_pred) < tol:
+                passed = True; break
+        except ValueError: pass
+    return dict(test="simulatability_sinusoidal", passed=passed,
+                ground_truth=round(true_pred, 3), response=response)
+
+
+def simulatability_abs_value(model, llm):
+    """Simulate on V-shaped data: y = 3*|x0| - 2*|x1| + x2.
+
+    Similar to hockey-stick but with symmetric V shapes. Trees capture the
+    breakpoint at 0 naturally. Linear models approximate with a single slope.
+    """
+    X, y = _abs_value_data()
+    names = [f"x{i}" for i in range(5)]
+    m = _safe_clone(model); m.fit(X, y)
+    sample = np.array([[-1.5, 0.8, 0.5, 0.0, 0.0]])
+    true_pred = float(m.predict(sample)[0])
+    response = ask_llm(
+        llm, get_model_str(m, names),
+        "What does this model predict for x0=-1.5, x1=0.8, x2=0.5, x3=0.0, x4=0.0? "
+        "Answer with just a single number.",
+    )
+    tol = max(abs(true_pred) * 0.2, 1.0)
+    passed = False
+    for num_str in reversed(re.findall(r"-?\d+\.?\d*", response or "")):
+        try:
+            if abs(float(num_str) - true_pred) < tol:
+                passed = True; break
+        except ValueError: pass
+    return dict(test="simulatability_abs_value", passed=passed,
+                ground_truth=round(true_pred, 3), response=response)
+
+
+def simulatability_twelve_features_all_active(model, llm):
+    """Simulate on 12 features, all active with decreasing coefficients.
+
+    Requires tracing through 12 terms. A serious stress test for readability.
+    Linear models are still computable from their string; GBDTs/MLPs are not.
+    """
+    X, y, _ = _twelve_feature_all_active_data()
+    names = [f"x{i}" for i in range(12)]
+    m = _safe_clone(model); m.fit(X, y)
+    sample = np.array([[1.0, -0.5, 0.8, 1.2, -0.3, 0.6, -1.0, 0.4, -0.2, 0.7, -0.8, 0.3]])
+    true_pred = float(m.predict(sample)[0])
+    response = ask_llm(
+        llm, get_model_str(m, names),
+        "What does this model predict for x0=1.0, x1=-0.5, x2=0.8, x3=1.2, "
+        "x4=-0.3, x5=0.6, x6=-1.0, x7=0.4, x8=-0.2, x9=0.7, x10=-0.8, x11=0.3? "
+        "Answer with just a single number.",
+    )
+    tol = max(abs(true_pred) * 0.15, 1.5)
+    passed = False
+    for num_str in reversed(re.findall(r"-?\d+\.?\d*", response or "")):
+        try:
+            if abs(float(num_str) - true_pred) < tol:
+                passed = True; break
+        except ValueError: pass
+    return dict(test="simulatability_twelve_features_all_active", passed=passed,
+                ground_truth=round(true_pred, 3), response=response)
+
+
+def simulatability_nested_threshold(model, llm):
+    """Simulate on nested-threshold data: if x0>0 and x1>0 → 5, elif x0>0 → 2, else → -1.
+
+    Shallow decision trees represent this branching structure perfectly.
+    Linear models approximate as additive effects. GBDTs/MLPs are opaque.
+    """
+    X, y = _nested_threshold_data()
+    names = [f"x{i}" for i in range(5)]
+    m = _safe_clone(model); m.fit(X, y)
+    sample = np.array([[0.8, -0.5, 0.0, 0.0, 0.0]])  # x0>0 but x1<0, expected ~2
+    true_pred = float(m.predict(sample)[0])
+    response = ask_llm(
+        llm, get_model_str(m, names),
+        "What does this model predict for x0=0.8, x1=-0.5, x2=0.0, x3=0.0, x4=0.0? "
+        "Answer with just a single number.",
+    )
+    tol = max(abs(true_pred) * 0.2, 0.8)
+    passed = False
+    for num_str in reversed(re.findall(r"-?\d+\.?\d*", response or "")):
+        try:
+            if abs(float(num_str) - true_pred) < tol:
+                passed = True; break
+        except ValueError: pass
+    return dict(test="simulatability_nested_threshold", passed=passed,
+                ground_truth=round(true_pred, 3), response=response)
+
+
 SIMULATABILITY_TESTS = [
     simulatability_eight_features,
     simulatability_fifteen_features_sparse,
@@ -1249,6 +1516,13 @@ SIMULATABILITY_TESTS = [
     simulatability_friedman1,
     simulatability_cascading_threshold,
     simulatability_quadratic_counterfactual,
+    simulatability_exponential_decay,
+    simulatability_piecewise_three_segment,
+    simulatability_twenty_features_sparse,
+    simulatability_sinusoidal,
+    simulatability_abs_value,
+    simulatability_twelve_features_all_active,
+    simulatability_nested_threshold,
 ]
 
 
