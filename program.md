@@ -71,8 +71,8 @@ commit,mean_rank,frac_interpretability_tests_passed,status,model_name,descriptio
 2. mean_rank achieved — use empty for crashes (note: interpretable_regressor.py does not compute mean_rank; check overall_results.csv for the baseline value to compare against)
 3. frac_interpretability_tests_passed — from the script output
 4. status: `keep`, `discard`, or `crash` (original runs have status `baseline`)
-5. shorthand name of the model tried - should always be unique
-6. brief text description of what this experiment tried - make sure to update this clearly
+5. shorthand name of the model tried - should always be unique (written in interpretable_regressor.py)
+6. brief text description of what this experiment tried - make sure to update this clearly (written in interpretable_regressor.py)
 
 ## The experiment loop
 

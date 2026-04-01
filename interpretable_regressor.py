@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import time
+from collections import defaultdict
 
 import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
@@ -68,15 +69,20 @@ import sys as _sys
 _sys.modules.setdefault("interpretable_regressor", _sys.modules[__name__])
 DecisionTreeSimpleRegressor.__module__ = "interpretable_regressor"
 
+# Update the model shorthand name and description below to reflect the class above and any changes you make to it.
+# The shorthand name should be unique across all experiments (it is used to identify rows in the results CSV files)
+# The description should briefly summarize what this experiment tried.
+model_shorthand_name = "DecisionTreeSimple"
+model_description = "Baseline interpretable regressor (shallow decision tree)"
+model_defs = [(model_shorthand_name, DecisionTreeSimpleRegressor())]
+
 
 # ---------------------------------------------------------------------------
-# Evaluation (do not edit any of the evaluation functions, only the names and model descriptions below this line)
+# Evaluation (do not edit anything below this line)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     t0 = time.time()
-
-    model_defs = [("DecisionTreeSimple", DecisionTreeSimpleRegressor())]
 
     # Interpretability tests
     interp_results = run_all_interp_tests(model_defs)
@@ -92,7 +98,7 @@ if __name__ == "__main__":
         git_hash = ""
 
     # --- Upsert interpretability_results.csv ---
-    model_name = "DecisionTreeSimple"
+    model_name = model_defs[0][0]
     interp_csv = os.path.join(RESULTS_DIR, "interpretability_results.csv")
     interp_fields = ["model", "test", "suite", "passed", "ground_truth", "response"]
 
@@ -147,7 +153,6 @@ if __name__ == "__main__":
         })
 
     # Recompute ranks per dataset
-    from collections import defaultdict
     by_dataset = defaultdict(list)
     for row in existing_perf:
         by_dataset[row["dataset"]].append(row)
@@ -180,15 +185,15 @@ if __name__ == "__main__":
         else:
             all_dataset_rmses[row["dataset"]][row["model"]] = float("nan")
     avg_rank, _ = compute_rank_scores(dict(all_dataset_rmses))
-    mean_rank = avg_rank.get(model_name, float("nan"))
+    mean_rank = avg_rank.get(model_shorthand_name, float("nan"))
 
     upsert_overall_results([{
         "commit":                             git_hash,
         "mean_rank":                          f"{mean_rank:.2f}" if not np.isnan(mean_rank) else "nan",
         "frac_interpretability_tests_passed": f"{n_passed / total:.4f}" if total > 0 else "nan",
         "status":                             "",
-        "model_name":                         "DecisionTreeSimple",
-        "description":                        "Baseline interpretable regressor (shallow decision tree)",
+        "model_name":                         model_shorthand_name,
+        "description":                        model_description,
     }], RESULTS_DIR)
 
     # --- Plot ---
