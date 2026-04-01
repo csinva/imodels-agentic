@@ -81,7 +81,7 @@ The experiment runs on a dedicated branch (e.g. `autoresearch/mar25`).
 LOOP FOREVER:
 
 1. Look at the git state: the current branch/commit we're on
-2. Edit `interpretable_regressor.py` with an experimental idea
+2. Edit `interpretable_regressor.py` with an experimental idea. It should only contain one class definition
 3. git commit
 4. Run the experiment: `uv run interpretable_regressor.py > run.log 2>&1`
 5. Read results: `tail -n 5 run.log` and `grep InterpretableRegressor results/overall_results.csv`
