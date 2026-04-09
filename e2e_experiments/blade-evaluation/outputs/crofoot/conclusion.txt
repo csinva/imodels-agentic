@@ -1,0 +1,1 @@
+{"response": 0, "explanation": "Research question: How do relative group size and contest location influence the probability of a capuchin monkey group winning an intergroup contest?  | Primary test: Pearson r=-0.254, p=5.484e-02 between focal (ID of focal group) and win (1 if focal won contest, 0 if other won) | Conclusion: Not significant at alpha=0.05."}

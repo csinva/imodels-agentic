@@ -1,18 +1,17 @@
 """Evaluate Codex results against Blade ground-truth using LLM-as-a-judge.
 
 For each dataset, loads the Codex conclusion and the human annotations,
-then uses Azure OpenAI to judge correctness, completeness, and clarity.
+then uses Azure OpenAI (keyless via Entra ID) to judge correctness,
+completeness, and clarity.
 
 Usage:
     python evaluate.py                         # evaluate all datasets
     python evaluate.py --dataset hurricane     # evaluate one dataset
     python evaluate.py --verbose               # show judge explanations
 
-Environment variables:
-    AZURE_OPENAI_API_KEY       - Entra ID token (from refresh_token.sh)
-    AZURE_OPENAI_ENDPOINT      - Azure endpoint (default: https://dl-openai-1.openai.azure.com/)
-    AZURE_OPENAI_DEPLOYMENT    - Deployment name (default: gpt-4o)
-    AZURE_OPENAI_API_VERSION   - API version (default: 2024-05-01-preview)
+Authentication:
+    Uses keyless Azure OpenAI via ChainedTokenCredential (AzureCli -> ManagedIdentity).
+    No environment variables needed — just `az login` locally or run on a managed identity host.
 """
 
 import argparse
@@ -23,6 +22,13 @@ import time
 
 import pandas as pd
 from openai import AzureOpenAI
+from azure.identity import ChainedTokenCredential, AzureCliCredential, ManagedIdentityCredential, get_bearer_token_provider
+
+scope = "https://cognitiveservices.azure.com/.default"
+credential = get_bearer_token_provider(ChainedTokenCredential(
+    AzureCliCredential(), # first check local
+    ManagedIdentityCredential(), # then check managed identity (for cluster jobs)
+), scope)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "outputs")
@@ -72,20 +78,10 @@ Respond ONLY with a JSON object:
 
 def get_client() -> AzureOpenAI:
     """Create Azure OpenAI client using Entra ID token."""
-    api_key = os.environ.get("AZURE_OPENAI_API_KEY")
-    if not api_key:
-        print("ERROR: AZURE_OPENAI_API_KEY not set. Run: source refresh_token.sh")
-        sys.exit(1)
-
-    endpoint = os.environ.get(
-        "AZURE_OPENAI_ENDPOINT", "https://dl-openai-1.openai.azure.com/"
-    )
-    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-05-01-preview")
-
     return AzureOpenAI(
-        api_key=api_key,
-        azure_endpoint=endpoint,
-        api_version=api_version,
+        api_version="2025-04-01-preview",
+        azure_endpoint="https://dl-openai-3.openai.azure.com/",
+        azure_ad_token_provider=credential,
     )
 
 
@@ -224,13 +220,12 @@ def judge_dataset(
     )
 
     try:
-        response = client.chat.completions.create(
+
+        response = client.responses.create(
             model=deployment,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            max_tokens=500,
+            input=prompt,
         )
-        raw = response.choices[0].message.content.strip()
+        raw = response.output_text.strip()
         # Parse JSON from response
         start = raw.find("{")
         end = raw.rfind("}")

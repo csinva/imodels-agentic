@@ -1,0 +1,1 @@
+{"response": 0, "explanation": "No significant relationship detected between gender and mortgage approval (p=1.0000). Acceptance rate for females: 0.881; males: 0.881."}

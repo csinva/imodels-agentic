@@ -1,0 +1,1 @@
+{"response": 0, "explanation": "Research question: How do children's reliance on majority preference develop over growth in age across different cultural contexts? | Primary test: Pearson r=0.007, p=8.630e-01 between y (Outcome, one of 1=unchosen option, 2=majority opti) and gender (Index of child's gender. 1=girl. 2=boy.) | Conclusion: Not significant at alpha=0.05."}
