@@ -2,12 +2,12 @@
 
 For each dataset, loads the Codex conclusion and the human annotations,
 then uses Azure OpenAI (keyless via Entra ID) to judge correctness,
-completeness, and clarity.
+completeness, and clarity on a 1-10 scale.
 
 Usage:
     python evaluate.py --mode standard         # evaluate standard tools run
-    python evaluate.py --mode custom           # evaluate custom tools run
-    python evaluate.py --mode standard --dataset hurricane
+    python evaluate.py --mode custom_v2        # evaluate custom tools run
+    python evaluate.py --output-dir outputs_standard_run1  # evaluate a specific directory
     python evaluate.py --mode standard --verbose
 
 Authentication:
@@ -43,40 +43,7 @@ DATASETS = [
     "teachingratings",
 ]
 
-JUDGE_PROMPT_V1 = """You are an expert data science evaluator. You are given:
-1. A research question about a dataset
-2. A description of the dataset
-3. A summary of human expert annotations (ground truth model specifications)
-4. An AI agent's conclusion (a 0-100 Likert score and explanation)
-
-Evaluate the AI agent's analysis on three dimensions, each scored 1-5:
-
-**Correctness** (1-5): Does the AI's conclusion align with sound statistical methodology?
-Does it identify the right variables, use appropriate tests/models, and reach a defensible conclusion?
-
-**Completeness** (1-5): Does the analysis consider relevant confounders, data issues,
-and alternative explanations? Does it match the breadth of the human expert annotations?
-
-**Clarity** (1-5): Is the explanation well-structured, precise, and easy to follow?
-
-Respond ONLY with a JSON object:
-{{"correctness": <int>, "completeness": <int>, "clarity": <int>, "explanation": "<brief justification>"}}
-
----
-
-**Research Question:** {research_question}
-
-**Dataset Description:** {dataset_description}
-
-**Human Expert Annotations Summary:**
-{annotations_summary}
-
-**AI Agent Conclusion:**
-- Likert Score (0=strong No, 100=strong Yes): {response}
-- Explanation: {agent_explanation}
-"""
-
-JUDGE_PROMPT_V2 = """You are an expert data science evaluator. You are given:
+JUDGE_PROMPT = """You are an expert data science evaluator. You are given:
 1. A research question about a dataset
 2. A description of the dataset
 3. A summary of human expert annotations (ground truth model specifications)
@@ -84,19 +51,22 @@ JUDGE_PROMPT_V2 = """You are an expert data science evaluator. You are given:
 
 Evaluate the AI agent's analysis on three dimensions. Use the FULL 1-10 scale — do not cluster scores around 7-8. A score of 5 means mediocre, 7 means good, 9-10 means excellent.
 
-**Correctness** (1-10): Does the agent reach a defensible conclusion about the research question?
+**Correctness** (1-10): Does the agent reach a well-supported, defensible conclusion?
 
-Focus on whether the agent's answer (the Likert score and reasoning) would be considered correct by a domain expert. The agent does NOT need to use the same specific statistical methods as the human experts — what matters is:
-- Does the Likert score go in the right direction? (If experts found a significant effect, does the agent say "Yes"? If not, does it say "No"?)
-- Does the agent correctly identify the key independent and dependent variables?
-- Does the agent appropriately weigh evidence from both simple and controlled analyses?
-- Is the statistical reasoning sound (not necessarily identical to experts)?
+A correct conclusion is not just "right direction" — it must be WELL-JUSTIFIED by the evidence. Reward analyses where:
+- The Likert score is well-calibrated: proportional to the strength of evidence, not just binary significant/not
+- The conclusion is validated across multiple modeling approaches (e.g., confirmed by both regression and interpretable models)
+- The agent distinguishes between bivariate associations and effects that survive controlling for confounders
+- Feature importance or effect sizes are used to calibrate confidence (e.g., a variable that is "significant" but ranks last in importance should get a lower score than one that is significant AND the top predictor)
+- The agent correctly identifies when a variable has NO effect (backed by evidence like zero coefficients, low importance rankings, or Lasso exclusion — not just a high p-value)
+
+An answer that says "p < 0.05 so Yes" is less correct than one that says "p < 0.05 in OLS AND rank 1 in importance at 32% AND confirmed by a second interpretable model, so strong Yes."
 
 Score 1-3: Wrong conclusion or fundamentally flawed reasoning
-Score 4-5: Partially correct but important errors
-Score 6-7: Mostly correct conclusion with minor issues
-Score 8-9: Correct conclusion with sound reasoning
-Score 10: Correct conclusion with expert-level nuance
+Score 4-5: Right direction but poorly justified or miscalibrated Likert score
+Score 6-7: Correct conclusion with basic justification (significance tests only)
+Score 8-9: Correct conclusion validated by multiple approaches with calibrated confidence
+Score 10: Expert-level — correct conclusion backed by convergent evidence from multiple models, with well-calibrated Likert score reflecting actual effect strength
 
 **Completeness** (1-10): Does the analysis go beyond basic tests to deeply understand the data?
 
@@ -157,9 +127,6 @@ Respond ONLY with a JSON object:
 - Explanation: {agent_explanation}
 """
 
-# Default to v2 rubric
-JUDGE_PROMPT = JUDGE_PROMPT_V2
-
 
 def get_client() -> AzureOpenAI:
     """Create Azure OpenAI client using Entra ID token."""
@@ -179,10 +146,8 @@ def load_conclusion(dataset: str, output_dir: str) -> dict | None:
         with open(path) as f:
             return json.load(f)
     except (json.JSONDecodeError, ValueError) as e:
-        # Try to extract JSON from file
         with open(path) as f:
             text = f.read().strip()
-        # Strip anything before first { and after last }
         start = text.find("{")
         end = text.rfind("}")
         if start >= 0 and end > start:
@@ -209,7 +174,7 @@ def load_dataset_description(dataset: str) -> str:
     desc = info["data_desc"]
     summary = desc.get("dataset_description", "")
     fields = []
-    for f_info in desc.get("fields", [])[:10]:  # Cap at 10 fields
+    for f_info in desc.get("fields", [])[:10]:
         col = f_info["column"]
         props = f_info.get("properties", {})
         field_desc = props.get("description", "")
@@ -226,7 +191,6 @@ def load_annotations_summary(dataset: str) -> str:
     df = pd.read_csv(path)
     lines = [f"Total expert specifications: {len(df)}"]
 
-    # Summarize conceptual specs (IVs, DVs, controls)
     concepts = []
     for _, row in df.iterrows():
         if pd.notna(row.get("conceptual_spec_json")):
@@ -243,7 +207,6 @@ def load_annotations_summary(dataset: str) -> str:
         for c in concepts[:8]:
             lines.append(f"  - {c}")
 
-    # Summarize model specs
     model_count = 0
     model_types = set()
     for _, row in df.iterrows():
@@ -251,7 +214,6 @@ def load_annotations_summary(dataset: str) -> str:
             try:
                 spec = json.loads(row["model_spec_json"])
                 model_count += 1
-                # Try to extract model type
                 code = str(spec)
                 for mtype in ["OLS", "GLM", "Poisson", "NegativeBinomial",
                               "logit", "probit", "lmer", "lm(", "glm("]:
@@ -264,7 +226,6 @@ def load_annotations_summary(dataset: str) -> str:
         if model_types:
             lines.append(f"Model types used: {', '.join(sorted(model_types))}")
 
-    # Summarize annotated transform specs
     transform_count = df["annotate_transform_spec_json"].notna().sum()
     if transform_count:
         lines.append(f"Data transformation specifications: {transform_count}")
@@ -276,12 +237,9 @@ def judge_dataset(
     client: AzureOpenAI,
     deployment: str,
     dataset: str,
-    output_dir: str = None,
-    rubric: str = "v2",
+    output_dir: str,
 ) -> dict:
     """Use LLM-as-a-judge to evaluate a single dataset's Codex output."""
-    if output_dir is None:
-        output_dir = os.path.join(SCRIPT_DIR, "outputs_standard")
     conclusion = load_conclusion(dataset, output_dir)
     if conclusion is None:
         return {"dataset": dataset, "status": "missing", "error": "no conclusion.txt"}
@@ -300,8 +258,7 @@ def judge_dataset(
     response_val = conclusion.get("response", "N/A")
     explanation = conclusion.get("explanation", "No explanation provided.")
 
-    prompt_template = JUDGE_PROMPT_V1 if rubric == "v1" else JUDGE_PROMPT_V2
-    prompt = prompt_template.format(
+    prompt = JUDGE_PROMPT.format(
         research_question=question,
         dataset_description=desc,
         annotations_summary=annotations,
@@ -310,13 +267,11 @@ def judge_dataset(
     )
 
     try:
-
         response = client.responses.create(
             model=deployment,
             input=prompt,
         )
         raw = response.output_text.strip()
-        # Parse JSON from response
         start = raw.find("{")
         end = raw.rfind("}")
         if start >= 0 and end > start:
@@ -340,19 +295,18 @@ def judge_dataset(
 def evaluate_all(
     datasets: list[str] | None = None,
     verbose: bool = False,
-    mode: str = "standard",
-    rubric: str = "v2",
+    output_dir: str = None,
+    results_path: str = None,
 ):
     """Run LLM-as-a-judge evaluation on all datasets."""
     client = get_client()
     deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
     datasets = datasets or DATASETS
-    output_dir = os.path.join(SCRIPT_DIR, f"outputs_{mode}")
 
     results = []
     for dataset in datasets:
-        print(f"Evaluating: {dataset} ({mode}, rubric={rubric})...", end=" ", flush=True)
-        result = judge_dataset(client, deployment, dataset, output_dir, rubric=rubric)
+        print(f"Evaluating: {dataset} ({os.path.basename(output_dir)})...", end=" ", flush=True)
+        result = judge_dataset(client, deployment, dataset, output_dir)
         results.append(result)
 
         if result["status"] == "ok":
@@ -369,19 +323,7 @@ def evaluate_all(
 
     # Summary
     df = pd.DataFrame(results)
-    print("\n" + "=" * 80)
-    print("BLADE LLM-AS-A-JUDGE EVALUATION RESULTS")
-    print("=" * 80)
-
     ok = df[df["status"] == "ok"]
-    missing = df[df["status"] == "missing"]
-    errors = df[df["status"].isin(["parse_error", "api_error"])]
-
-    print(f"\nCompleted: {len(ok)}/{len(df)} datasets")
-    if len(missing):
-        print(f"Missing conclusions: {', '.join(missing['dataset'].tolist())}")
-    if len(errors):
-        print(f"Errors: {', '.join(errors['dataset'].tolist())}")
 
     if len(ok) > 0:
         print(f"\n{'Dataset':20s} {'Response':>8s} {'Correct':>8s} {'Complete':>8s} {'Clarity':>8s}")
@@ -391,7 +333,6 @@ def evaluate_all(
                 f"{row['dataset']:20s} {str(row['agent_response']):>8s} "
                 f"{row['correctness']:>8d} {row['completeness']:>8d} {row['clarity']:>8d}"
             )
-
         print("-" * 56)
         print(
             f"{'AVERAGE':20s} {'':>8s} "
@@ -399,13 +340,13 @@ def evaluate_all(
             f"{ok['clarity'].mean():>8.2f}"
         )
         overall = (ok["correctness"].mean() + ok["completeness"].mean() + ok["clarity"].mean()) / 3
-        max_score = 10 if rubric == "v2" else 5
-        print(f"\nOverall average score: {overall:.2f} / {max_score:.2f}")
+        print(f"\nOverall average score: {overall:.2f} / 10.00")
 
     # Save results
-    results_path = os.path.join(SCRIPT_DIR, f"results_{mode}.csv")
+    if results_path is None:
+        results_path = os.path.join(SCRIPT_DIR, "judge_results", f"results_{os.path.basename(output_dir)}.csv")
     df.to_csv(results_path, index=False)
-    print(f"\nResults saved to {results_path}")
+    print(f"Results saved to {results_path}")
 
     return df
 
@@ -414,11 +355,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate Blade Codex results with LLM-as-a-judge")
     parser.add_argument("--dataset", type=str, default=None, help="Single dataset to evaluate")
     parser.add_argument("--verbose", action="store_true", help="Show judge explanations")
-    parser.add_argument("--mode", type=str, choices=["standard", "custom", "custom_v2"], default="standard",
-                        help="Which run to evaluate: 'standard', 'custom', or 'custom_v2'")
-    parser.add_argument("--rubric", type=str, choices=["v1", "v2"], default="v2",
-                        help="Rubric version: 'v1' (1-5 scale) or 'v2' (1-10 scale, conclusion-focused)")
+    parser.add_argument("--mode", type=str, choices=["standard", "custom_v2"], default="standard",
+                        help="Which run to evaluate: 'standard' or 'custom_v2'")
+    parser.add_argument("--output-dir", type=str, default=None,
+                        help="Explicit output directory to evaluate (overrides --mode)")
+    parser.add_argument("--results-path", type=str, default=None,
+                        help="Explicit path for results CSV")
     args = parser.parse_args()
 
+    if args.output_dir:
+        output_dir = args.output_dir
+        if not os.path.isabs(output_dir):
+            output_dir = os.path.join(SCRIPT_DIR, output_dir)
+    else:
+        output_dir = os.path.join(SCRIPT_DIR, f"outputs_{args.mode}")
+
     ds = [args.dataset] if args.dataset else None
-    evaluate_all(datasets=ds, verbose=args.verbose, mode=args.mode, rubric=args.rubric)
+    evaluate_all(datasets=ds, verbose=args.verbose, output_dir=output_dir,
+                 results_path=args.results_path)

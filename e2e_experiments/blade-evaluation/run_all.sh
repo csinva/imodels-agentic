@@ -23,17 +23,23 @@ DATASETS=(
 SKIP_EXISTING=false
 SINGLE_DATASET=""
 MODE="standard"
+CUSTOM_OUTPUT_DIR=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --skip-existing) SKIP_EXISTING=true; shift ;;
         --mode) MODE="$2"; shift 2 ;;
+        --output-dir) CUSTOM_OUTPUT_DIR="$2"; shift 2 ;;
         *) SINGLE_DATASET="$1"; shift ;;
     esac
 done
 
-OUTPUT_DIR="$SCRIPT_DIR/outputs_${MODE}"
+if [[ -n "$CUSTOM_OUTPUT_DIR" ]]; then
+    OUTPUT_DIR="$SCRIPT_DIR/$CUSTOM_OUTPUT_DIR"
+else
+    OUTPUT_DIR="$SCRIPT_DIR/outputs_${MODE}"
+fi
 
 if [[ -n "$SINGLE_DATASET" ]]; then
     DATASETS=("$SINGLE_DATASET")

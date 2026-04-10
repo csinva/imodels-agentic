@@ -80,95 +80,6 @@ Focus on building interpretable models that help you understand the relationship
 - Available packages: numpy, pandas, scipy, statsmodels, sklearn, imodels, matplotlib, seaborn.
 """
 
-AGENTS_MD_CUSTOM = """You are an expert data scientist. You MUST write and execute a Python script to analyze a dataset and answer a research question.
-
-## Instructions
-
-1. Read `info.json` to get the research question and dataset metadata.
-2. Load the dataset from `{dataset_name}.csv`.
-3. Write a Python script called `analysis.py` that:
-   - Loads and explores the data (summary statistics, distributions, correlations)
-   - Builds interpretable models using the provided custom interpretability tools AND standard tools
-   - Performs appropriate statistical tests (t-tests, ANOVA, regression, etc.)
-   - Interprets the results in context of the research question
-4. **Execute the script** by running: `python3 analysis.py`
-5. The script MUST write a file called `conclusion.txt` containing ONLY a JSON object:
-
-```json
-{{"response": <integer 0-100>, "explanation": "<your reasoning>"}}
-```
-
-Where `response` is a Likert scale score: 0 = strong "No", 100 = strong "Yes".
-
-## Custom Interpretability Tools (IMPORTANT: use these!)
-
-A file called `interp_models.py` is provided in this directory. It contains custom
-scikit-learn compatible interpretable regressors that produce human-readable model
-descriptions. **You should heavily use these tools** in your analysis.
-
-### Available models:
-
-1. **SmartAdditiveRegressor**: Greedy additive model that learns per-feature shape
-   functions. After fitting, `str(model)` shows:
-   - Linear coefficients for features with linear effects
-   - Piecewise-constant lookup tables for features with nonlinear effects
-   - Which features are excluded (zero effect)
-
-2. **HingeEBMRegressor**: Two-stage model using piecewise-linear hinge functions
-   with Lasso sparsity. After fitting, `str(model)` shows:
-   - Clean linear equation with only the active terms
-   - Feature coefficients sorted by importance
-   - Which features have zero coefficients
-
-### Example usage:
-
-```python
-from interp_models import SmartAdditiveRegressor, HingeEBMRegressor
-import pandas as pd
-import numpy as np
-
-df = pd.read_csv("{dataset_name}.csv")
-# Prepare X (features) and y (target variable relevant to the research question)
-# ... select appropriate columns based on the research question ...
-
-model = SmartAdditiveRegressor(n_rounds=200)
-model.fit(X, y)
-print("Model interpretation:")
-print(model)  # Shows human-readable equation and feature effects
-
-# Also try HingeEBMRegressor for comparison
-model2 = HingeEBMRegressor(n_knots=3)
-model2.fit(X, y)
-print("HingeEBM interpretation:")
-print(model2)
-
-# Use the interpretable output to understand which features matter
-# and how they relate to the research question
-```
-
-### Why use these tools:
-
-- `str(model)` gives you a complete, human-readable explanation of the learned model
-- You can see exactly which features matter and their directional effects
-- Nonlinear effects are shown as piecewise lookup tables (thresholds and values)
-- Combine with standard statistical tests for a comprehensive analysis
-
-## Standard Tools (also available)
-
-- **scikit-learn**: `LinearRegression`, `Ridge`, `Lasso`, `DecisionTreeRegressor`
-- **imodels**: `RuleFitRegressor`, `FIGSRegressor`, `HSTreeRegressor`
-- **statsmodels**: `statsmodels.api.OLS` for regression with p-values
-- **scipy.stats**: Statistical tests (t-test, chi-square, correlation, ANOVA)
-
-## Important
-
-- You MUST actually run the script, not just write it. The `conclusion.txt` file must exist when you are done.
-- When asked if a relationship between two variables exists, use statistical significance tests.
-- Relationships lacking significance should receive a "No" (low score), significant ones a "Yes" (high score).
-- Available packages: numpy, pandas, scipy, statsmodels, sklearn, imodels, interpret, matplotlib, seaborn.
-- **Use the custom interpretability tools from `interp_models.py`** — they provide deeper insight into feature relationships than standard models.
-"""
-
 AGENTS_MD_CUSTOM_V2 = """You are an expert data scientist. You MUST write and execute a Python script to analyze a dataset and answer a research question.
 
 ## Instructions
@@ -325,7 +236,6 @@ def prepare_dataset(dataset_name: str, mode: str, output_dir: str):
     # Write AGENTS.md based on mode
     templates = {
         "standard": AGENTS_MD_STANDARD,
-        "custom": AGENTS_MD_CUSTOM,
         "custom_v2": AGENTS_MD_CUSTOM_V2,
     }
     template = templates[mode]
@@ -333,7 +243,7 @@ def prepare_dataset(dataset_name: str, mode: str, output_dir: str):
         f.write(template.format(dataset_name=dataset_name))
 
     # Copy interp_models.py for custom modes
-    if mode in ("custom", "custom_v2"):
+    if mode == "custom_v2":
         shutil.copy2(
             os.path.join(SCRIPT_DIR, "interp_models.py"),
             os.path.join(dst_dir, "interp_models.py"),
@@ -358,13 +268,22 @@ def main():
     parser.add_argument(
         "--mode",
         type=str,
-        choices=["standard", "custom", "custom_v2"],
+        choices=["standard", "custom_v2"],
         default="standard",
-        help="Tool mode: 'standard', 'custom' (v1), or 'custom_v2' (improved prompts + tools)",
+        help="Tool mode: 'standard' (sklearn/imodels) or 'custom_v2' (+ interp_models.py)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Explicit output directory name (overrides default outputs_{mode})",
     )
     args = parser.parse_args()
 
-    output_dir = os.path.join(SCRIPT_DIR, f"outputs_{args.mode}")
+    if args.output_dir:
+        output_dir = os.path.join(SCRIPT_DIR, args.output_dir)
+    else:
+        output_dir = os.path.join(SCRIPT_DIR, f"outputs_{args.mode}")
     datasets = [args.dataset] if args.dataset else DATASETS
     print(f"Preparing {len(datasets)} dataset(s) in {args.mode} mode...")
 

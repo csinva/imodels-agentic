@@ -1,0 +1,307 @@
+{
+  "question": "How many fish on average do visitors takes per hour, when fishing? (i.e., What factors influence the number of fish caught by visitors to a national park and how can we estimate the rate of fish caught per hour?)",
+  "n_rows": 250,
+  "missing_values": {
+    "fish_caught": 0,
+    "livebait": 0,
+    "camper": 0,
+    "persons": 0,
+    "child": 0,
+    "hours": 0
+  },
+  "summary_statistics": {
+    "count": {
+      "fish_caught": 250.0,
+      "livebait": 250.0,
+      "camper": 250.0,
+      "persons": 250.0,
+      "child": 250.0,
+      "hours": 250.0
+    },
+    "mean": {
+      "fish_caught": 3.296,
+      "livebait": 0.864,
+      "camper": 0.588,
+      "persons": 2.528,
+      "child": 0.684,
+      "hours": 5.52598
+    },
+    "std": {
+      "fish_caught": 11.635028127085569,
+      "livebait": 0.34347620531043754,
+      "camper": 0.49318243649044374,
+      "persons": 1.1127302794023335,
+      "child": 0.850315320677167,
+      "hours": 9.356304178205217
+    },
+    "min": {
+      "fish_caught": 0.0,
+      "livebait": 0.0,
+      "camper": 0.0,
+      "persons": 1.0,
+      "child": 0.0,
+      "hours": 0.004
+    },
+    "25%": {
+      "fish_caught": 0.0,
+      "livebait": 1.0,
+      "camper": 0.0,
+      "persons": 2.0,
+      "child": 0.0,
+      "hours": 0.28650000000000003
+    },
+    "50%": {
+      "fish_caught": 0.0,
+      "livebait": 1.0,
+      "camper": 1.0,
+      "persons": 2.0,
+      "child": 0.0,
+      "hours": 1.8315000000000001
+    },
+    "75%": {
+      "fish_caught": 2.0,
+      "livebait": 1.0,
+      "camper": 1.0,
+      "persons": 4.0,
+      "child": 1.0,
+      "hours": 7.34275
+    },
+    "max": {
+      "fish_caught": 149.0,
+      "livebait": 1.0,
+      "camper": 1.0,
+      "persons": 4.0,
+      "child": 3.0,
+      "hours": 71.036
+    }
+  },
+  "correlation_matrix": {
+    "fish_caught": {
+      "fish_caught": 1.0,
+      "livebait": 0.09352296656460936,
+      "camper": 0.127720298553529,
+      "persons": 0.22146123854081978,
+      "child": -0.16952366796900462,
+      "hours": 0.22713742022655112
+    },
+    "livebait": {
+      "fish_caught": 0.09352296656460936,
+      "livebait": 1.0,
+      "camper": 0.09464265771487443,
+      "persons": -0.0215200879966436,
+      "child": -0.010230501611745236,
+      "hours": -0.04394343310246076
+    },
+    "camper": {
+      "fish_caught": 0.127720298553529,
+      "livebait": 0.09464265771487443,
+      "camper": 1.0,
+      "persons": -0.04841708530196382,
+      "child": -0.03397790972228124,
+      "hours": 0.2468830751901942
+    },
+    "persons": {
+      "fish_caught": 0.22146123854081978,
+      "livebait": -0.0215200879966436,
+      "camper": -0.04841708530196382,
+      "persons": 1.0,
+      "child": 0.5463233733396441,
+      "hours": -0.13460582124333442
+    },
+    "child": {
+      "fish_caught": -0.16952366796900462,
+      "livebait": -0.010230501611745236,
+      "camper": -0.03397790972228124,
+      "persons": 0.5463233733396441,
+      "child": 1.0,
+      "hours": -0.41909040570564404
+    },
+    "hours": {
+      "fish_caught": 0.22713742022655112,
+      "livebait": -0.04394343310246076,
+      "camper": 0.2468830751901942,
+      "persons": -0.13460582124333442,
+      "child": -0.41909040570564404,
+      "hours": 1.0
+    }
+  },
+  "rate_summary": {
+    "weighted_rate": 0.5964552893785356,
+    "mean_individual_rate": 1.10738145692415,
+    "median_individual_rate": 0.0
+  },
+  "tests": {
+    "ttest_rate_gt_zero": {
+      "t_stat": 3.9487449234216156,
+      "p_value": 5.115312838670568e-05
+    },
+    "binary_tests": {
+      "livebait": {
+        "mean_when_0": 0.3903775372649305,
+        "mean_when_1": 1.2202431850186566,
+        "t_stat": 2.1726842503425017,
+        "p_value": 0.030947670046307954
+      },
+      "camper": {
+        "mean_when_0": 0.765032436627634,
+        "mean_when_1": 1.3472586616217086,
+        "t_stat": 1.154658139362694,
+        "p_value": 0.2495297339201722
+      }
+    },
+    "anova_tests": {
+      "persons": {
+        "f_stat": 4.640416552035783,
+        "p_value": 0.0035546581282644325
+      },
+      "child": {
+        "f_stat": 1.5188891989677127,
+        "p_value": 0.2101482684522141
+      }
+    },
+    "pearson_fish_vs_hours": {
+      "r": 0.22713742022655126,
+      "p_value": 0.00029369464499657844
+    },
+    "pearson_rate_vs_hours": {
+      "r": -0.06832751294624251,
+      "p_value": 0.2818392356323342
+    }
+  },
+  "ols": {
+    "params": {
+      "const": -0.4160318861841131,
+      "livebait": 0.1722953898665586,
+      "camper": 0.2080911904145068,
+      "persons": 0.34912051035119473,
+      "child": -0.41574993666932436,
+      "hours": -0.017579484058420965
+    },
+    "pvalues": {
+      "const": 0.0020581155316671783,
+      "livebait": 0.09495516130551185,
+      "camper": 0.0054270049552385385,
+      "persons": 1.7269340207130407e-17,
+      "child": 4.956190310076513e-13,
+      "hours": 6.39005481333595e-05
+    },
+    "adj_r2": 0.2836142015344969,
+    "f_pvalue": 3.0863735362624786e-17
+  },
+  "sklearn_models": {
+    "linear_regression": {
+      "cv_r2_mean": 0.22189031828266717,
+      "cv_r2_std": 0.17367007545743823,
+      "coef": {
+        "livebait": 0.05906088937439613,
+        "camper": 0.1024214607948444,
+        "persons": 0.3876992305903842,
+        "child": -0.3528107951843469,
+        "hours": -0.16414971252863908
+      }
+    },
+    "ridge": {
+      "cv_r2_mean": 0.2230176046166555,
+      "cv_r2_std": 0.17054360360818685,
+      "coef": {
+        "livebait": 0.05897770169581474,
+        "camper": 0.10145574898655282,
+        "persons": 0.38408782155003884,
+        "child": -0.3485653591014601,
+        "hours": -0.16197394953107191
+      }
+    },
+    "lasso": {
+      "cv_r2_mean": 0.2225180881302716,
+      "cv_r2_std": 0.1718559126220128,
+      "coef": {
+        "livebait": 0.058291301512305674,
+        "camper": 0.1008827208643878,
+        "persons": 0.385062293424516,
+        "child": -0.349414355115877,
+        "hours": -0.16173517366195317
+      }
+    },
+    "decision_tree_regressor": {
+      "cv_r2_mean": 0.23390452110681714,
+      "cv_r2_std": 0.16222572189395643,
+      "feature_importance": {
+        "livebait": 0.0,
+        "camper": 0.0,
+        "persons": 0.5714134063422753,
+        "child": 0.0,
+        "hours": 0.4285865936577246
+      }
+    }
+  },
+  "imodels": {
+    "rulefit": {
+      "train_r2": 0.4876238369700595,
+      "top_rules": [
+        {
+          "rule": "persons > 2.5 and hours > 0.226",
+          "coef": 0.36746505087976994,
+          "support": 0.28,
+          "importance": 0.1649913986406664
+        },
+        {
+          "rule": "persons > 3.5 and hours > 0.2165",
+          "coef": 0.4110215025857347,
+          "support": 0.148,
+          "importance": 0.1459537297807893
+        },
+        {
+          "rule": "persons > 2.5 and hours <= 3.058 and hours > 0.372",
+          "coef": 0.2284882654951233,
+          "support": 0.12,
+          "importance": 0.07424989775564157
+        },
+        {
+          "rule": "hours",
+          "coef": -0.008848614799787198,
+          "support": 1.0,
+          "importance": 0.0682357276117292
+        },
+        {
+          "rule": "persons > 1.5 and hours > 0.391",
+          "coef": 0.12575809165122695,
+          "support": 0.504,
+          "importance": 0.06287703366395196
+        },
+        {
+          "rule": "hours <= 0.563",
+          "coef": -0.08496064184636436,
+          "support": 0.328,
+          "importance": 0.03988773198721569
+        },
+        {
+          "rule": "livebait",
+          "coef": 0.1121542667303669,
+          "support": 1.0,
+          "importance": 0.03844520010290969
+        },
+        {
+          "rule": "persons > 2.5 and hours > 7.454",
+          "coef": -0.13242677545632267,
+          "support": 0.084,
+          "importance": 0.03673357391269507
+        }
+      ]
+    },
+    "figs": {
+      "train_r2": 0.5602322311597048,
+      "feature_importance": {
+        "livebait": 0.10197327953081053,
+        "camper": 0.0,
+        "persons": 0.43440937058276263,
+        "child": 0.0,
+        "hours": 0.4636173498864267
+      },
+      "model_text": "> ------------------------------\n> FIGS-Fast Interpretable Greedy-Tree Sums:\n> \tPredictions are made by summing the \"Val\" reached by traversing each tree.\n> \tFor classifiers, a softmax function is then applied to the sum.\n> ------------------------------\nhours <= 0.226 (Tree #0 root)\n\tVal: 0.0 (leaf)\n\tpersons <= 2.500 (split)\n\t\tpersons <= 1.500 (split)\n\t\t\tVal: 0.084 (leaf)\n\t\t\tVal: 0.275 (leaf)\n\t\thours <= 0.249 (split)\n\t\t\tVal: 4.129 (leaf)\n\t\t\thours <= 4.731 (split)\n\t\t\t\thours <= 0.891 (split)\n\t\t\t\t\tpersons <= 3.500 (split)\n\t\t\t\t\t\tVal: 0.479 (leaf)\n\t\t\t\t\t\tVal: 1.122 (leaf)\n\t\t\t\t\tVal: 1.356 (leaf)\n\t\t\t\tVal: 0.485 (leaf)\n\n\t+\nlivebait <= 0.500 (Tree #1 root)\n\tVal: -0.168 (leaf)\n\tVal: 0.026 (leaf)\n"
+    },
+    "hstree": {
+      "train_r2": 0.5487083910280947,
+      "model_text": "> ------------------------------\n> Decision Tree with Hierarchical Shrinkage\n> \tPrediction is made by looking at the value in the appropriate leaf of the tree\n> ------------------------------\n|--- hours <= 0.23\n|   |--- value: [0.00]\n|--- hours >  0.23\n|   |--- persons <= 2.50\n|   |   |--- persons <= 1.50\n|   |   |   |--- value: [0.09]\n|   |   |--- persons >  1.50\n|   |   |   |--- value: [0.27]\n|   |--- persons >  2.50\n|   |   |--- hours <= 0.25\n|   |   |   |--- value: [4.08]\n|   |   |--- hours >  0.25\n|   |   |   |--- hours <= 4.73\n|   |   |   |   |--- hours <= 0.89\n|   |   |   |   |   |--- persons <= 3.50\n|   |   |   |   |   |   |--- value: [0.50]\n|   |   |   |   |   |--- persons >  3.50\n|   |   |   |   |   |   |--- value: [1.11]\n|   |   |   |   |--- hours >  0.89\n|   |   |   |   |   |--- value: [1.35]\n|   |   |   |--- hours >  4.73\n|   |   |   |   |--- value: [0.49]\n"
+    }
+  }
+}
