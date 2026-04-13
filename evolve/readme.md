@@ -52,7 +52,7 @@ Finally, the report should end with a string visualization of three different mo
 Spin up Claude Code (or any LLM agent) in this repo and prompt:
 
 ```
-Hi have a look at program.md and let's kick off a new experiment!
+Read and follow the instructions in `program.md`.
 ```
 
 The `program.md` file is the lightweight "skill" that instructs the agent.
