@@ -10,6 +10,7 @@ Outputs (all under results/):
   interpretability_vs_performance.png
 """
 
+import argparse
 import csv
 import os
 import subprocess
@@ -89,6 +90,11 @@ def _suite(test_name):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint", default=None,
+                        help="LLM checkpoint for interpretability tests (default: gpt-4o)")
+    args = parser.parse_args()
+
     t0 = time.time()
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
@@ -96,7 +102,7 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("  INTERPRETABILITY TESTS")
     print("="*60)
-    interp_results = run_all_interp_tests(REGRESSOR_DEFS)
+    interp_results = run_all_interp_tests(REGRESSOR_DEFS, checkpoint=args.checkpoint)
 
     model_names = list(dict.fromkeys(r["model"] for r in interp_results))
     interp_scores = {m: sum(r["passed"] for r in interp_results if r["model"] == m)
@@ -173,4 +179,7 @@ if __name__ == "__main__":
     print(f"\nTotal time: {time.time() - t0:.1f}s")
 
     # also run the interpretable_regressor.py script here
-    os.system("uv run interpretable_regressor.py")
+    cmd = "uv run interpretable_regressor.py"
+    if args.checkpoint:
+        cmd += f" --checkpoint {args.checkpoint}"
+    os.system(cmd)

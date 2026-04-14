@@ -7,6 +7,7 @@ for baselines in run_baselines.py).
 Usage: uv run model.py
 """
 
+import argparse
 import csv
 import os
 import subprocess
@@ -82,10 +83,15 @@ model_defs = [(model_shorthand_name, DecisionTreeSimpleRegressor())]
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint", default=None,
+                        help="LLM checkpoint for interpretability tests (default: gpt-4o)")
+    args = parser.parse_args()
+
     t0 = time.time()
 
     # Interpretability tests
-    interp_results = run_all_interp_tests(model_defs)
+    interp_results = run_all_interp_tests(model_defs, checkpoint=args.checkpoint)
     n_passed = sum(r["passed"] for r in interp_results)
     total = len(interp_results)
 
