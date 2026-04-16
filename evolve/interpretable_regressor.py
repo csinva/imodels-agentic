@@ -84,8 +84,8 @@ model_defs = [(model_shorthand_name, DecisionTreeSimpleRegressor())]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", default='gpt-5.4',
-                        help="LLM checkpoint for interpretability tests (default: gpt-5.4)")
+    parser.add_argument("--checkpoint", default='gpt-4o',
+                        help="LLM checkpoint for interpretability tests (default: gpt-4o)")
     args = parser.parse_args()
 
     t0 = time.time()
