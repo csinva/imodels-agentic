@@ -1,0 +1,1 @@
+{"response": 40, "explanation": "Raw correlation between masfem and deaths: r=0.117 (p=0.262). Controlled regression: coef=0.021 (p=0.537). Positive trend in expected direction but not statistically significant after controlling for storm severity. Weak evidence that feminine names lead to less precautionary behavior."}

@@ -1,0 +1,1 @@
+{"response": 20, "explanation": "Reader View does not improve reading speed for dyslexic individuals (mean speed: RV=1: 323.3 vs RV=0: 342.3 wpm). T-test p=0.6965. No significant improvement."}

@@ -1,0 +1,1 @@
+{"response": 20, "explanation": "Having children does not decrease affairs. Unadjusted means: yes=1.67, no=0.91. After controlling for confounders, the coefficient is not significant (coef=-0.143, p=0.6840)."}

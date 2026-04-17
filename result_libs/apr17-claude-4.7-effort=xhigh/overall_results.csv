@@ -1,0 +1,82 @@
+commit,mean_rank,frac_interpretability_tests_passed,status,model_name,description
+baseline,9.06,0.4186,baseline,PyGAM,generalized additive model with 10 splines per feature and default settings
+baseline,15.31,0.6744,baseline,DT_mini,small decision tree with up to 8 max_leaf_nodes
+baseline,14.83,0.5349,baseline,DT_large,large decision tree with up to 20 max_leaf_nodes
+baseline,12.31,0.7442,baseline,OLS,ordinary least squares linear regression
+baseline,12.78,0.5349,baseline,LassoCV,Lasso linear model with cross-validation to select the regularization parameter
+baseline,12.34,0.7674,baseline,RidgeCV,Ridge linear model with cross-validation to select the regularization parameter
+baseline,7.89,0.2326,baseline,RF,"random forest with 50 tree estimators, each with max_depth of 5"
+baseline,7.40,0.5349,baseline,GBM,"gradient boosting machine with 100 tree estimators, each with max_depth of 3"
+baseline,15.83,0.1628,baseline,MLP,"multi-layer perceptron with default hidden layer size, ReLU activation, and Adam solver"
+baseline,13.38,0.3953,baseline,FIGS_mini,small FIGS with up to 8 max_rules
+baseline,12.97,0.5814,baseline,FIGS_large,large FIGS with up to 20 max_rules
+baseline,10.72,0.2791,baseline,RuleFit,RuleFit with up to 20 max_rules
+baseline,14.75,0.7674,baseline,HSTree_mini,small HSTree with up to 8 max_leaf_nodes
+baseline,12.29,0.6744,baseline,HSTree_large,large HSTree with up to 20 max_leaf_nodes
+baseline,5.71,0.0465,baseline,EBM,explainable boosting machine (InterpretML) with 3 outer bags and 1000 max rounds
+baseline,3.72,0.0698,baseline,TabPFN,TabPFN foundation model for tabular data
+a0b1827,13.60,0.6047,keep,DecisionTreeSimple,Baseline interpretable regressor (shallow decision tree)
+e3c5778,7.18,0.5116,keep,SparseHingeLinear,LassoCV over linear + pos/neg hinge basis (3 knots per feature at interior quantiles); display is flat sorted equation.
+0395cba,7.97,0.6744,keep,PiecewiseGAM3Knots_sorted,PiecewiseLinearGAM with 3 knots + features sorted by importance in display.
+54026b0,9.98,0.7209,keep,LinearPlusStumps12,RidgeCV linear + up to 12 additive stumps on residuals (more stumps for better rank).
+8f9e527,10.95,0.7442,keep,AdaptiveSelector,Selects between LinearPlusStumps with 0/4/12 stumps via 3-fold CV. Adapts complexity per dataset.
+efa2047,11.92,0.6047,discard,LinearPlusStumps_examples,LinearPlusStumps12 with 3 worked example predictions in display for LLM arithmetic calibration.
+500a0a6,15.34,0.5349,discard,BinnedGAM,"Binned additive model: per-feature lookup tables (5 quantile bins), LassoCV-selected bin contributions."
+50e3d1a,7.06,0.5349,discard,CleanHingeLinear,"Two-stage: LassoCV select hinge basis, prune terms with <3% of max effect, OLS debias. Cleaner equation for LLM simulation."
+cd10ee9,7.94,0.5116,discard,SmartKnotLinear,"Linear base + at most one data-driven hinge per feature (added only if it cuts residual SSE >=1%), LassoCV select, OLS debias."
+090b910,11.68,0.6977,discard,SparseLinearOLSStyle,"Pure linear: LassoCV select, OLS debias, OLS-style display. Upper-bound test: does matching OLS display format close the interp gap?"
+3ceb59e,5.51,0.4651,discard,HingeEBMLinear,"Sparse hinge-linear (2 knots, LassoCV+OLS debias, 4% effect threshold) + hidden EBM on residuals. OLS-style display."
+b81de7c,10.11,0.5581,discard,HingeOLSStyle,"Sparse hinge-linear (2 knots, LassoCV+OLS debias, 4% effect threshold), OLS-style display, no hidden residual — consistent display/predict."
+3935c2d,10.91,0.5581,discard,HingeBudgetLinear,"Sparse linear + at most 4 hinge terms (decile knot candidates, top-K by LassoCV effect), OLS debias. Budgeted complexity for interp."
+16369eb,10.26,0.5581,discard,HingeBothOLS,3-knot pos+neg hinge basis + LassoCV + OLS debias + 3% effect prune. OLS-style single-equation display.
+fe0627b,11.09,0.6047,discard,HingeLassoNoDebias,"3-knot pos+neg hinge basis + LassoCV (NO debias, keeps regularized coefs) + 3% prune. OLS-style display."
+59660f2,10.98,0.6047,discard,HingeSplitDisplay,"3-knot pos+neg hinge LassoCV; FULL Lasso coefs for predict, top-effect (>=3%) terms only in display."
+f6566b6,8.80,0.5349,discard,LinearEBMHybrid,"RidgeCV (pure linear display, same format as RidgeCV baseline) + hidden EBM on residuals for rank boost."
+eca48c9,14.51,0.5349,discard,RidgeQuadratic,"RidgeCV on [x_i, x_i^2] standardized. Quadratic features capture curvature; display is OLS-style clean equation."
+f4612fa,13.83,0.6512,discard,PiecewiseLinearGAM,"Hinge basis LassoCV, but display per-feature piecewise (slope + intercept per segment between knots). Decouples features for LLM simulation."
+2f275a8,14.83,0.5116,discard,PiecewiseGAMv2,"Hinge basis LassoCV, per-feature piecewise display with segment merging and cleaner formatting."
+924a275,13.55,0.6047,discard,PiecewiseGAM_lessprune,"Hinge basis LassoCV, per-feature piecewise display (v1 format), less aggressive pruning (1% of max effect)."
+c0c0f19,14.38,0.3953,discard,PiecewiseGAM_noprune,"Hinge basis LassoCV, per-feature piecewise display (v1 format), NO pruning — predict uses full LassoCV coefs."
+4a7dbd2,8.72,0.5814,discard,AdaptivePiecewiseGAM,"PiecewiseLinearGAM with adaptive 0/1/2 knots per feature (CV-chosen, prefer simpler if within 2%). Per-feature piecewise display."
+1b37250,9.06,0.6512,discard,PiecewiseGAM2Knots,PiecewiseLinearGAM with 2 knots per feature (simpler equations).
+d1b4f7d,8.46,0.6047,discard,PiecewiseGAM4Knots,PiecewiseLinearGAM with 4 knots per feature (finer resolution).
+8af7e10,12.31,0.6279,discard,PiecewiseGAM_best,"Piecewise GAM: 3-knot LassoCV basis, 3% effect prune, per-feature piecewise display with near-identical segment merging (8% tol), sorted by importance."
+c1885ef,8.97,0.6047,discard,PiecewiseGAM_aggressive,"Piecewise GAM: no coef pruning (full Lasso for rank), aggressive 20% segment merge in display for clean interpretation."
+21fcc66,8.71,0.6047,discard,PiecewiseGAM_Plus,"Piecewise GAM (3% prune) + top-3 pairwise interactions selected by |corr(x_i*x_j, residual)|."
+c10310f,10.25,0.6047,discard,PiecewiseGAM_1pct,"Piecewise GAM, 1% effect prune (less aggressive), no interactions, sorted display."
+d1b442d,10.57,0.5581,discard,PiecewiseGAM_ridge_debias,"PiecewiseGAM (3% prune) + Ridge(alpha=1e-3) refit on kept basis. Lasso for selection, mild Ridge for coef debias."
+2568073,13.51,0.6047,discard,PiecewiseGAM_repeat,"Recreate PiecewiseGAM3Knots_sorted cleanly — 3% prune, no debias, sorted piecewise display. Sanity check."
+a759af7,14.51,0.6512,discard,PiecewiseGAM_header_fix,Conditional header — only mention interactions when present. Recreates original PiecewiseGAM3Knots_sorted display behavior.
+72c43c4,10.45,0.6279,discard,PiecewiseGAM_3dp,PiecewiseGAM with 3-decimal-place precision (instead of 4) for cleaner display.
+65d3758,11.45,0.6512,discard,PiecewiseGAM_stdimp,PiecewiseGAM with scale-free importance sorting (|slope| * feature_std).
+8d50715,10.11,0.5349,discard,PiecewiseGAM_FullPredict,"Full Lasso coefs for predict (no pruning), display merges near-identical adjacent segments (within 5% of slope/intercept)."
+50f2642,11.02,0.5581,discard,PiecewiseGAM_Ridge,Piecewise GAM fit with RidgeCV + 5% effect prune. Ridge keeps more features at small coefs.
+1cbfbc1,9.43,0.5349,discard,PiecewiseGAM_Stumps,PiecewiseGAM base (3% prune) + up to 6 greedy stumps on residuals. Best of both: nonlinearity per feature + interaction/shift via stumps.
+c604729,9.45,0.6047,discard,PiecewiseGAM_adaptive_display,"PiecewiseGAM with OLS-style equation display when all features pure linear, piecewise display when some nonlinear."
+dedc457,8.89,0.5581,discard,RichLinearPlusStumps,"Linear base with per-feature transform (x, sqrt|x|, log|x|+1) + 12 stumps. Auto-select best transform per feature."
+0dd2873,9.00,0.4884,discard,PolynomialPlusStumps,"Polynomial basis (x, x^2, x^3) + LassoCV select + 3% prune + 8 greedy stumps on residuals."
+0630ddc,15.72,0.6744,discard,DecisionListLinear,"Decision list: depth-3 tree extracts rules (5 specific), catch-all uses RidgeCV linear. Sequential if-elif-else."
+82dc0cf,12.38,0.6512,discard,LinearPlusStumps8,RidgeCV linear + up to 8 additive stumps on residuals.
+f549113,10.92,0.6744,discard,LinearPlusStumps10,RidgeCV linear + 10 stumps (between 8 and 12 to tune sweet spot).
+203843b,13.48,0.6744,discard,LinearPlusStumps14,RidgeCV linear + up to 14 stumps.
+1c8baf8,11.37,0.6744,discard,LinearPlusStumps20,RidgeCV linear + up to 20 additive stumps on residuals.
+3028f6d,13.51,0.6744,discard,LinearPlusStumps12_tight,RidgeCV linear + up to 12 stumps with tighter min_stump_frac=0.01 (stops earlier).
+1d70600,10.63,0.6744,discard,LinearPlusStumps_twosided,"RidgeCV linear + 12 two-sided stumps (split SSE optimally, baseline shift absorbed in intercept)."
+704a31c,14.72,0.6047,discard,LinearPlusStumps_lr05,"RidgeCV linear + stumps with learning_rate=0.5, max 20 stumps."
+6e9b9fa,14.95,0.6977,discard,LinearPlusStumps12_sorted,RidgeCV linear + 12 stumps sorted by |delta| in display.
+5794897,9.98,0.6047,discard,LassoPlusStumps12,LassoCV linear base (instead of Ridge) + 12 stumps.
+477176a,10.92,0.6744,discard,LinearPlusStumps_pairs,"RidgeCV linear + 12 stumps; after 3 single-feature stumps, pair stumps allowed (top-5 feats)."
+cdbf355,11.23,0.5814,discard,LinearPlusStumps_optimal,"RidgeCV + 12 stumps via sklearn depth-1 tree (optimal MSE splits, with baseline shift absorbed)."
+a768539,11.22,0.7209,discard,LinearPlusStumps_unique,"RidgeCV linear + up to 8 stumps, each on a DIFFERENT feature (unique_features=True)."
+7012f34,12.45,0.6977,discard,LinearPlusStumps12_v2,RidgeCV + 12 one-sided stumps (sanity re-run of best architecture).
+a3addfb,10.20,0.6977,discard,LinearModelTree,"Depth-1 tree with Ridge-regression leaves. Best split + separate linear per leaf. If no useful split found, falls back to global Ridge."
+d935421,13.02,0.6977,discard,LinearPlusStumpsDoc,"LinearPlusStumps12 with QUICK FACTS documentation block (most important feature, top-3, zero-input prediction)."
+d3aa657,14.02,0.6047,discard,LinearPlusStumpsPython,LinearPlusStumps12 displayed as runnable Python code — LLM can mentally execute.
+2d32aa7,15.02,0.6047,discard,LinearPlusStumpsStepwise,LinearPlusStumps12 with explicit step-by-step prediction instructions in display.
+2f275c6,16.98,0.5349,discard,IsotonicGAM,Backfitted isotonic GAM: each feature's effect is monotonic (direction auto-detected). Display as per-feature step-function tables.
+dac3d24,10.25,0.6279,discard,RandomStumpsLasso,"100 random (feature, threshold) stump candidates + linear features, LassoCV selects. Like RuleFit but single-threshold only."
+c2dc226,12.37,0.6977,discard,AdaptiveSelector5,"CV selects between LinearPlusStumps with 0/4/8/12/20 stumps (5 candidates, broader range)."
+e8888aa,13.43,0.7442,discard,AdaptiveSelector2,CV selects between pure linear (0 stumps) and 12 stumps. Simpler 2-way choice.
+b1b255c,12.95,0.7442,discard,AdaptiveSelectorTiered,AdaptiveSelector with tiered-importance display (primary/secondary/weak categories).
+28c745d,12.89,0.6744,discard,AdaptiveRidgeOrStumps,AdaptiveSelector with Ridge-style display when 0 stumps chosen (matches baseline RidgeCV format for LLM familiarity).
+26cb37b,nan,0.5116,crash,LinearPlusStumpsCV,"RidgeCV linear + stumps with validation-based early stopping (20% holdout, patience 3). Crashed on small datasets."

@@ -1,0 +1,1 @@
+{"response": 40, "explanation": "Reader View does not significantly improve reading speed for individuals with dyslexia. Dyslexic readers: mean speed 318.0 (reader view ON) vs 330.9 (OFF), difference -3.9%, t-test p=0.7601, Mann-Whitney p=0.7326. OLS interaction coef=-0.0430, p=0.4773."}

@@ -1,0 +1,1 @@
+{"response": 30, "explanation": "No significant relationship (OLS p=0.6840, MW p=0.0012). Those with children have slightly MORE affairs (mean diff=0.760), so no evidence children decreases affair engagement."}

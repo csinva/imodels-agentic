@@ -1,0 +1,1 @@
+{"response": 40, "explanation": "The simple correlation between STR and scores is significant (r=-0.226, p=2.78e-06), but after controlling for socioeconomic confounders the effect becomes non-significant (STR coef=-0.255, p=3.66e-01), suggesting the relationship is largely confounded."}

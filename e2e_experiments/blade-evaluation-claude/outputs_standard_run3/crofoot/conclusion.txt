@@ -1,0 +1,1 @@
+{"response": 20, "explanation": "Neither relative group size (p=0.1955) nor location advantage (p=0.7178) reaches statistical significance in logistic regression. Weak evidence for either factor."}

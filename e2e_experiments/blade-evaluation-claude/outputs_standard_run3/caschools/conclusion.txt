@@ -1,0 +1,1 @@
+{"response": 45, "explanation": "The STR is significantly negatively correlated with test scores in bivariate analysis (r=-0.226, p=2.78e-06), but the effect is not significant after controlling for socioeconomic factors (p=3.50e-01). The association may be confounded by income and poverty."}

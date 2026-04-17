@@ -1,0 +1,1 @@
+{"response": 25, "explanation": "Children's majority preference reliance shows developmental change with age. Age effect p=0.784 (rho=0.000), culture p=0.423, interaction p=0.576. Overall majority rate=0.46. Age coefficient in OLS: 0.006. ANOVA culture effect: F=1.532, p=0.1533."}

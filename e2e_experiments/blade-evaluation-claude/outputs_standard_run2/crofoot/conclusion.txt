@@ -1,0 +1,1 @@
+{"response": 20, "explanation": "Neither relative group size (p=0.1955) nor contest location (p=0.7178) significantly predicts win probability. Little evidence for the proposed relationships."}

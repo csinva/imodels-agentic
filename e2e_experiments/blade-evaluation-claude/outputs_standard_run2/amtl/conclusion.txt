@@ -1,0 +1,1 @@
+{"response": 70, "explanation": "Homo sapiens shows higher AMTL rates (mean=0.103) vs non-human primates (mean=0.009), with significant difference (t-test p=0.0000, MW p=0.0000). OLS and logistic regression with covariates support this finding."}

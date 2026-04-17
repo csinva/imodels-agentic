@@ -1,0 +1,1 @@
+{"response": 20, "explanation": "Neither factor reaches significance."}

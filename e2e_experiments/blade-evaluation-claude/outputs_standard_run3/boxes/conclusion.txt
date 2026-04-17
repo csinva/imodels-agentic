@@ -1,0 +1,1 @@
+{"response": 30, "explanation": "Weak/no evidence that age predicts majority following (logistic regression p=0.8642). The relationship between age and majority preference is not statistically significant."}

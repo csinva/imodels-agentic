@@ -1,0 +1,1 @@
+{"response": 90, "explanation": "Yes. Binomial regression shows humans have significantly higher AMTL rates after controlling for age, sex, and tooth class (coef=1.558, p=1.77e-22). Human mean AMTL rate (0.103) is substantially higher than non-human primates (0.009)."}
