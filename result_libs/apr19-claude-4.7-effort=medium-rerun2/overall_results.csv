@@ -1,0 +1,63 @@
+commit,mean_rank,frac_interpretability_tests_passed,status,model_name,description
+baseline,21.69,0.4186,baseline,PyGAM,generalized additive model with 10 splines per feature and default settings
+baseline,40.23,0.6744,baseline,DT_mini,small decision tree with up to 8 max_leaf_nodes
+baseline,41.23,0.5349,baseline,DT_large,large decision tree with up to 20 max_leaf_nodes
+baseline,31.68,0.7442,baseline,OLS,ordinary least squares linear regression
+baseline,37.88,0.5349,baseline,LassoCV,Lasso linear model with cross-validation to select the regularization parameter
+baseline,33.45,0.7674,baseline,RidgeCV,Ridge linear model with cross-validation to select the regularization parameter
+baseline,23.14,0.2326,baseline,RF,"random forest with 50 tree estimators, each with max_depth of 5"
+baseline,20.91,0.5349,baseline,GBM,"gradient boosting machine with 100 tree estimators, each with max_depth of 3"
+baseline,44.49,0.1628,baseline,MLP,"multi-layer perceptron with default hidden layer size, ReLU activation, and Adam solver"
+baseline,36.94,0.3953,baseline,FIGS_mini,small FIGS with up to 8 max_rules
+baseline,35.75,0.5814,baseline,FIGS_large,large FIGS with up to 20 max_rules
+baseline,29.88,0.2791,baseline,RuleFit,RuleFit with up to 20 max_rules
+baseline,39.69,0.7674,baseline,HSTree_mini,small HSTree with up to 8 max_leaf_nodes
+baseline,35.05,0.6744,baseline,HSTree_large,large HSTree with up to 20 max_leaf_nodes
+baseline,14.29,0.4651,baseline,EBM,explainable boosting machine (InterpretML) with 3 outer bags and 1000 max rounds
+baseline,9.85,0.0698,baseline,TabPFN,TabPFN foundation model for tabular data
+6ecf7b1,38.14,0.6047,,DecisionTreeSimple,Baseline interpretable regressor (shallow decision tree)
+3b011d5,19.92,0.3488,,SparseAdditiveHinges_v1,"Additive model: per-feature linear + ReLU hinges at 5 quantile knots, LassoCV sparsity, hard-cap 20 active terms"
+462d7ac,32.58,0.3488,,SparseAdditiveHinges_v2,"Additive model: per-feature linear + 3 hinges, LassoCV, hard-cap 8 terms (more compact for interp)"
+22a9b7f,23.55,0.3488,,TransformedLasso_v1,"LassoCV over per-feature [x, x^2, slog(x)] transforms; refit OLS on top-8 support; clean linear-in-transforms formula"
+5f929aa,28.40,0.6977,,SparseLinearOLS_v1,"LassoCV-selected top-8 features, refit OLS in original space; clean linear formula"
+9e80e28,29.40,0.6047,,SparseLinearOLS_v2,"LassoCV-selected top-8 features, refit OLS, OLS-mimic format with zero coefs shown"
+459ca66,28.43,0.6744,,SparseLinearOLS_v3,"LassoCV-selected top-12 features, refit OLS, clean active-only listing with excluded notes"
+f42e7a6,24.40,0.6047,,LinearPlusStumps_v1,Sparse OLS (k=8) + 4 greedy decision stumps on residuals; linear formula + if-then adjustments
+411659f,34.55,0.6977,,GreedyForwardOLS_v1,"Forward greedy R^2-gain feature selection (k=6), refit OLS"
+ae08613,25.42,0.4419,,HingePerFeatureOLS_v1,"Top-6 features (LassoCV) each with linear + at most one hinge knot, fit by joint OLS"
+8d440bc,19.97,0.4651,,HingePerFeatureOLS_v2,"Top-12 features (LassoCV) each with linear + at most one hinge knot, fit by joint OLS"
+2c27e9d,27.29,0.6512,,LinearTreeBoost_v1,Sparse OLS top-8 trunk + shallow decision tree (6 leaves) on residuals; prints linear formula + tree
+6934e96,20.37,0.2791,,BoostedHinges_v1,"Greedy boosted hinges (10 rounds) + linear trunk, jointly refit OLS; per-feature piecewise-linear formula"
+e14f983,33.58,0.6977,,RidgeCleanFormat_v1,"RidgeCV all features, original-space coefficients with note about negligible features"
+7d85623,44.17,0.4884,,MicroEBM_v1,"Per-top-8 features, 4-bin quantile step functions, backfitting; clean per-feature step tables"
+4dd54dc,29.80,0.6977,,SubsetOLS_v1,LinearRegression subclass with Lasso-based subset selection (top-10) so OLS print format is used
+be25cbd,30.14,0.6744,,SparseLinearOLS_k15,"LassoCV-selected top-15 features, refit OLS"
+f5421d1,37.02,0.7209,,SparseLinearOLS_k5,"LassoCV-selected top-5 features, refit OLS"
+8a3914c,31.28,0.6744,,SparseLinearOLS_k20,"LassoCV-selected top-20 features, refit OLS"
+a583e30,34.60,0.6977,,CorrTopKOLS,"Univariate-correlation-selected top-8 features, refit OLS"
+f6d3f41,34.82,0.6744,,ElasticNetOLS,"ElasticNetCV-selected top-8 features, refit OLS"
+3662621,43.42,0.6744,,HuberSparseLinear,"LassoCV-selected top-8 features, refit Huber regression (robust to outliers)"
+0730fd2,33.00,0.6977,,ResidualSparseOLS,"Sparse OLS top-8, then LassoCV on residuals adds up to 4 more features; final OLS refit on union"
+cf0007e,37.46,0.6744,,PreScreenOLS,"Drop low-variance and >0.95 correlated features, then LassoCV top-8 + OLS refit"
+ff09966,35.42,0.6744,,BaggedSparseOLS,Stability selection: 10 bootstraps of LassoCV; keep features chosen >=40% of bags; OLS refit
+0963f67,35.49,0.7674,,ThresholdOLSPrune,OLS on all features; iteratively prune feats with |coef*std| < 1% of max; refit OLS
+be50531,35.52,0.6977,,ThresholdOLSPrune_01pct,OLS on all features; iteratively prune feats with |coef*std| < 0.1% of max; refit OLS
+99aff21,35.14,0.6512,,SparseRidgeRefit,"LassoCV-selected top-8 features, refit RidgeCV (over alphas 0.01-10)"
+0dee03c,21.20,0.5116,,StumpAdditive,"Per top-8 features: linear term + one stump indicator (best quantile threshold), joint OLS"
+74b5fb3,37.26,0.6977,,GBMSelectedOLS,"GBM importance picks top-8 features, OLS refit; clean linear formula"
+9c4f581,22.20,0.5116,,SparseQuadOLS,"Top-8 LassoCV linear features + x^2 of top-3 of those, joint OLS"
+f196d9c,23.20,0.5116,,MutualInfoOLS,"Mutual-information selects top-8 features, refit OLS clean linear formula"
+02aabca,24.20,0.5116,,ReweightedSparseOLS,LassoCV top-8 + 2 IRLS refits with weights 1/(1+|r|/3MAD); clean linear formula
+e14bca2,25.20,0.5116,,SparseLinearOLS_k12,"LassoCV-selected top-12 features, refit OLS"
+1af6f03,26.20,0.5116,,PureLassoCV,LassoCV on standardized X; coefs projected back to original scale; only nonzero shown
+b5d6657,27.20,0.5116,,PrunedRidgeCV,RidgeCV on all feats; prune feats with |c*std|<5% max; refit RidgeCV
+076cd15,28.20,0.5116,,OMPSparseOLS,OrthogonalMatchingPursuit picks top-8 support; refit OLS in original space
+df09e13,29.20,0.5116,,SparseLinearOLS_k9,"LassoCV-selected top-9 features, refit OLS; v1 formatting"
+a17e9b9,31.82,0.5581,,ShallowTreeOLS,4-leaf decision tree partitions data; per-leaf OLS on top-3 LassoCV features
+26ddde2,nan,0.0000,,PlainOLS,Vanilla LinearRegression on all features (subclass; uses OLS isinstance formatter)
+c66cb47,30.20,0.5116,,PlainOLSv2,Vanilla LinearRegression on all features (subclass; uses OLS isinstance formatter)
+3d40211,31.20,0.5116,,TopKContribOLS,"Full OLS, rank features by |coef*std|, keep top-8, refit OLS"
+f53ad88,31.66,0.6512,,WinsorizedSparseOLS,"Clip features to [p1,p99] then LassoCV-select top-8, OLS refit"
+b915ff5,38.25,0.6744,,SparseLinearOLS_k7,"LassoCV-selected top-7 features, refit OLS"
+beccc84,39.00,0.6977,,NormalizedYOLS,LassoCV on z-scored y to pick support; OLS refit on raw y
+5ffe36e,45.40,0.6744,,TopCorrOLS3,Top-3 features by |Pearson corr|; OLS refit (very sparse)
