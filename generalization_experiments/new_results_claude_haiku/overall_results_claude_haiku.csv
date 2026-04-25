@@ -1,0 +1,42 @@
+commit,mean_rank,frac_interpretability_tests_passed,status,model_name,description
+,22.69,0.7209,baseline,PyGAM,generalized additive model with 10 splines per feature and default settings
+,31.25,0.8372,baseline,DT_mini,small decision tree with up to 8 max_leaf_nodes
+,31.12,0.8140,baseline,DT_large,large decision tree with up to 20 max_leaf_nodes
+,32.94,0.9070,baseline,OLS,ordinary least squares linear regression
+,31.88,0.8837,baseline,LassoCV,Lasso linear model with cross-validation to select the regularization parameter
+,28.62,0.9070,baseline,RidgeCV,Ridge linear model with cross-validation to select the regularization parameter
+,17.25,0.1860,baseline,RF,"random forest with 50 tree estimators, each with max_depth of 5"
+,14.50,0.4186,baseline,GBM,"gradient boosting machine with 100 tree estimators, each with max_depth of 3"
+,33.38,0.1628,baseline,MLP,"multi-layer perceptron with default hidden layer size, ReLU activation, and Adam solver"
+,28.62,0.6512,baseline,FIGS_mini,small FIGS with up to 8 max_rules
+,27.69,0.5814,baseline,FIGS_large,large FIGS with up to 20 max_rules
+,23.62,0.4651,baseline,RuleFit,RuleFit with up to 20 max_rules
+,27.44,0.8605,baseline,HSTree_mini,small HSTree with up to 8 max_leaf_nodes
+,23.19,0.8140,baseline,HSTree_large,large HSTree with up to 20 max_leaf_nodes
+,8.06,0.6512,baseline,EBM,explainable boosting machine (InterpretML) with 3 outer bags and 1000 max rounds
+,2.69,0.0698,baseline,TabPFN,TabPFN foundation model for tabular data
+,13.62,0.7674,evolved,HingeEBM_big,
+,27.94,0.9302,evolved,SklearnGAM_hybrid,
+,20.31,0.8605,evolved,SmoothGAM_RF,
+,11.62,0.7442,evolved,HingeEBM_LinDisp,
+,14.00,0.9302,evolved,SmartAdditive_v5,
+,27.75,0.9535,evolved,SmoothGAM_noES,
+,21.19,0.9535,evolved,SmoothGAM_hybrid,
+,13.31,0.9535,evolved,SmartAddGAM_r90,
+,21.06,0.8837,evolved,SmoothGAM_RF100,
+,11.69,0.8372,evolved,SmartAdditive_v1,
+,13.00,0.7907,evolved,HingeEBM_5bag,
+,15.81,0.7674,evolved,HingeEBM_smart,
+,21.25,0.8837,evolved,SmoothGAM_RF_sqrt,
+,25.81,0.9070,evolved,SmoothGAM_tinyGBM,
+,12.69,0.8837,evolved,FullPWC_LinDisp,
+,25.56,0.8837,evolved,SmoothGAM_40s,
+,19.62,0.8372,evolved,HingeGBM_v1,
+,12.50,0.8372,evolved,SklearnStumpGAM_v1,
+,26.12,0.8837,evolved,SmoothGAM_50s,
+,31.12,0.8605,evolved,SmoothGAM_r70hyb,
+,21.19,0.7442,evolved,DistilledGAM_v1,
+,17.31,0.9070,evolved,SmartAdditive_v2,
+,11.56,0.7907,evolved,HingeEBM_v1,
+,19.50,0.8372,evolved,SmoothGAM_v1,
+,20.50,0.8372,evolved,SmoothGAM_ES,

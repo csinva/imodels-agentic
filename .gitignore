@@ -27,3 +27,4 @@ e2e_experiments/example-blade-repo
 paper-imodels-agentic
 **.log
 **.claude
+**.venv*
